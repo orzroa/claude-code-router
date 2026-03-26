@@ -1,0 +1,108 @@
+import { useTranslation } from 'react-i18next';
+import { Calendar, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+interface DateItem {
+  date: string;
+  requests: number;
+  tokens: number;
+}
+
+interface DateSidebarProps {
+  dates: DateItem[];
+  selectedDate?: string;
+  onSelect: (date: string) => void;
+  onSelectToday?: () => void;
+}
+
+export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: DateSidebarProps) {
+  const { t } = useTranslation();
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (dateStr === today) return t('usage.today');
+    if (dateStr === yesterdayStr) return t('usage.yesterday');
+
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatDayOfWeek = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString(undefined, { weekday: 'short' });
+  };
+
+  return (
+    <div className="w-48 flex flex-col border-r bg-muted/30 h-full">
+      {/* Header */}
+      <div className="p-3 border-b">
+        <div className="flex items-center gap-2 font-semibold">
+          <Calendar className="w-4 h-4" />
+          {t('usage.date_history')}
+        </div>
+      </div>
+
+      {/* Today button */}
+      {onSelectToday && (
+        <div className="p-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={onSelectToday}
+          >
+            {t('usage.today')}
+          </Button>
+        </div>
+      )}
+
+      {/* Date list */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-2 space-y-1">
+          {dates.map((item) => {
+            const isSelected = selectedDate === item.date;
+            return (
+              <button
+                key={item.date}
+                onClick={() => onSelect(item.date)}
+                className={`
+                  w-full text-left p-2 rounded-lg transition-colors
+                  flex items-center justify-between group
+                  ${isSelected
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-muted'
+                  }
+                `}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">
+                      {formatDate(item.date)}
+                    </span>
+                    <span className={`text-xs ${isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      {formatDayOfWeek(item.date)}
+                    </span>
+                  </div>
+                  <div className={`text-xs mt-0.5 ${isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                    {item.requests.toLocaleString()} {t('usage.requests')}
+                  </div>
+                </div>
+                <ChevronRight className={`
+                  w-4 h-4 flex-shrink-0
+                  ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}
+                `} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

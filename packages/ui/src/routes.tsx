@@ -1,4 +1,4 @@
-import { createMemoryRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import { Login } from '@/components/Login';
 import { DebugPage } from '@/components/DebugPage';
@@ -7,7 +7,7 @@ import { UsagePage } from '@/components/UsagePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 
-export const router = createMemoryRouter([
+export const router = createBrowserRouter([
   {
     path: '/',
     element: <Navigate to="/dashboard" replace />,
@@ -33,5 +33,5 @@ export const router = createMemoryRouter([
     element: <ProtectedRoute><DebugPage /></ProtectedRoute>,
   },
 ], {
-  initialEntries: ['/dashboard']
+  basename: '/ui'
 });

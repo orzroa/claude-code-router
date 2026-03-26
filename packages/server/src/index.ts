@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, appendFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -19,6 +19,12 @@ import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
 
 const event = new EventEmitter()
 
+// Debug file
+const DEBUG_FILE = '/tmp/ccr-persist-debug.txt';
+function debugLog(msg: string) {
+  appendFileSync(DEBUG_FILE, `${new Date().toISOString()} ${msg}\n`);
+}
+
 // Check if usage tracking is enabled
 const USAGE_TRACKING_ENABLED = process.env.USAGE_TRACKING_ENABLED !== 'false';
 
@@ -38,11 +44,12 @@ async function persistUsage(params: {
   success: boolean;
   errorMessage?: string;
 }): Promise<void> {
-  if (!USAGE_TRACKING_ENABLED) return;
+  if (!USAGE_TRACKING_ENABLED) { debugLog('USAGE_TRACKING_ENABLED=false, skip'); return; }
 
   const { req, usage, isStreaming, success, errorMessage } = params;
-  if (!usage) return;
+  if (!usage) { debugLog(`persistUsage: usage is ${usage}, skip. sessionId=${req.sessionId} isStreaming=${isStreaming}`); return; }
 
+  debugLog(`persistUsage called: sessionId=${req.sessionId} isStreaming=${isStreaming} usage=${JSON.stringify(usage)}`);
   try {
     const now = new Date();
     const record: Omit<UsageRecord, 'id'> = {
@@ -424,31 +431,45 @@ async function getServer(options: RunOptions = {}) {
         }
 
         const [originalStream, clonedStream] = payload.tee();
+        debugLog(`streaming path: cloning stream, sessionId=${req.sessionId}`);
         const read = async (stream: ReadableStream) => {
           const reader = stream.getReader();
+          let currentEvent = '';
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              // Process the value if needed
               const dataStr = new TextDecoder().decode(value);
-              if (!dataStr.startsWith("event: message_delta")) {
-                continue;
+              const lines = dataStr.split('\n');
+              for (const line of lines) {
+                if (line.startsWith('event:')) {
+                  currentEvent = line.slice(6).trim();
+                } else if (line.startsWith('data:') && currentEvent === 'message_delta') {
+                  const jsonStr = line.slice(5).trim();
+                  if (jsonStr === '[DONE]') continue;
+                  try {
+                    const message = JSON.parse(jsonStr);
+                    debugLog(`message_delta: ${jsonStr.slice(0, 100)}`);
+                    if (message.usage) {
+                      sessionUsageCache.put(req.sessionId, message.usage);
+                      debugLog(`usage found: ${JSON.stringify(message.usage)}`);
+                      persistUsage({
+                        req,
+                        usage: message.usage,
+                        isStreaming: true,
+                        success: true,
+                      }).catch(err => console.error('Failed to persist streaming usage:', err));
+                    } else {
+                      debugLog(`no usage in message_delta`);
+                    }
+                  } catch (e) {
+                    debugLog(`JSON parse error: ${e}`);
+                  }
+                }
               }
-              const str = dataStr.slice(27);
-              try {
-                const message = JSON.parse(str);
-                sessionUsageCache.put(req.sessionId, message.usage);
-                // Persist usage for streaming response
-                persistUsage({
-                  req,
-                  usage: message.usage,
-                  isStreaming: true,
-                  success: true,
-                }).catch(err => console.error('Failed to persist streaming usage:', err));
-              } catch {}
             }
           } catch (readError: any) {
+            debugLog(`read error: ${readError.name}:${readError.message}`);
             if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
               console.error('Background read stream closed prematurely');
             } else {
@@ -462,6 +483,7 @@ async function getServer(options: RunOptions = {}) {
         return done(null, originalStream)
       }
       sessionUsageCache.put(req.sessionId, payload.usage);
+      debugLog(`non-streaming: sessionId=${req.sessionId} payload.usage=${JSON.stringify(payload.usage)}`);
       // Persist usage for non-streaming response
       if (payload.usage) {
         persistUsage({

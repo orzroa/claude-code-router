@@ -117,7 +117,8 @@ async function showUsage(options: {
       if (provider.models.length > 1) {
         for (const model of provider.models) {
           const modelTokens = model.inputTokens + model.outputTokens;
-          console.log(`      ${DIM}-${RESET} ${model.model}: ${formatNumber(model.requests)} requests, ${formatNumber(modelTokens)} tokens`);
+          const modelName = Array.isArray(model.model) ? model.model.join(',') : String(model.model);
+          console.log(`      ${DIM}-${RESET} ${modelName}: ${formatNumber(model.requests)} requests, ${formatNumber(modelTokens)} tokens`);
         }
       }
     }
@@ -129,7 +130,8 @@ async function showUsage(options: {
 
     for (const model of summary.byModel) {
       const modelTokens = model.inputTokens + model.outputTokens;
-      console.log(`  ${CYAN}${model.model}${RESET} ${DIM}(${model.provider})${RESET}:`);
+      const modelName = Array.isArray(model.model) ? model.model.join(',') : String(model.model);
+      console.log(`  ${CYAN}${modelName}${RESET} ${DIM}(${model.provider})${RESET}:`);
       console.log(`    ${formatNumber(model.requests)} requests, ${formatNumber(modelTokens)} tokens`);
     }
   }

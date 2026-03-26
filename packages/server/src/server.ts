@@ -26,6 +26,8 @@ import {
   getModels,
   getAvailableDateRange,
   getDailyTotals,
+  getHourlyAggregation,
+  getPerformanceMetrics,
   type PresetFile,
   type ManifestFile,
   type PresetMetadata,
@@ -123,16 +125,22 @@ export const createServer = async (config: any): Promise<any> => {
     return { success: true, message: "Config saved successfully" };
   });
 
-  // Register static file serving with caching
+  // Register static file serving with caching and SPA fallback
   app.register(fastifyStatic, {
     root: join(__dirname, "..", "dist"),
     prefix: "/ui/",
     maxAge: "1h",
+    wildcard: false, // Disable automatic wildcard to handle SPA routing manually
   });
 
   // Redirect /ui to /ui/ for proper static file serving
   app.get("/ui", async (_: any, reply: any) => {
     return reply.redirect("/ui/");
+  });
+
+  // SPA fallback: serve index.html for all other /ui/* routes
+  app.get("/ui/*", async (_: any, reply: any) => {
+    return reply.sendFile("index.html");
   });
 
   // Get log file list endpoint
@@ -560,6 +568,42 @@ export const createServer = async (config: any): Promise<any> => {
     } catch (error: any) {
       console.error("Failed to get daily totals:", error);
       reply.status(500).send({ error: error.message || "Failed to get daily totals" });
+    }
+  });
+
+  // Get hourly aggregation for time-of-day analysis
+  app.get("/api/usage/hourly", async (req: any, reply: any) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      if (!startDate || !endDate) {
+        reply.status(400).send({ error: "startDate and endDate are required" });
+        return;
+      }
+
+      const hourlyData = getHourlyAggregation(startDate, endDate);
+      return { data: hourlyData };
+    } catch (error: any) {
+      console.error("Failed to get hourly aggregation:", error);
+      reply.status(500).send({ error: error.message || "Failed to get hourly aggregation" });
+    }
+  });
+
+  // Get performance metrics time series for charting
+  app.get("/api/usage/performance", async (req: any, reply: any) => {
+    try {
+      const { startDate, endDate, groupBy } = req.query;
+
+      if (!startDate || !endDate) {
+        reply.status(400).send({ error: "startDate and endDate are required" });
+        return;
+      }
+
+      const metrics = getPerformanceMetrics(startDate, endDate, groupBy || 'day');
+      return { data: metrics };
+    } catch (error: any) {
+      console.error("Failed to get performance metrics:", error);
+      reply.status(500).send({ error: error.message || "Failed to get performance metrics" });
     }
   });
 

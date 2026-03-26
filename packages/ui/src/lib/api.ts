@@ -446,6 +446,53 @@ class ApiClient {
 
     return this.delete(`/usage/cleanup?${queryParams.toString()}`);
   }
+
+  // Get hourly aggregation for time-of-day analysis
+  async getUsageHourly(params: {
+    startDate: string;
+    endDate: string;
+  }): Promise<{
+    data: Array<{
+      hour: number;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      avgLatency?: number;
+      avgSpeed?: number;
+    }>;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('startDate', params.startDate);
+    queryParams.append('endDate', params.endDate);
+
+    return this.get(`/usage/hourly?${queryParams.toString()}`);
+  }
+
+  // Get performance metrics time series for charting
+  async getUsagePerformance(params: {
+    startDate: string;
+    endDate: string;
+    groupBy?: 'day' | 'hour';
+  }): Promise<{
+    data: Array<{
+      timestamp: string;
+      date: string;
+      provider: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      avgLatency?: number;
+      avgTimeToFirstToken?: number;
+      avgSpeed?: number;
+    }>;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('startDate', params.startDate);
+    queryParams.append('endDate', params.endDate);
+    if (params.groupBy) queryParams.append('groupBy', params.groupBy);
+
+    return this.get(`/usage/performance?${queryParams.toString()}`);
+  }
 }
 
 // Create a default instance of the API client

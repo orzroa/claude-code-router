@@ -149,7 +149,7 @@ export function query(query: UsageQuery): UsageRecord[] {
   const endDate = query.endDate?.substring(0, 7) || '';
 
   const relevantFiles = files.filter(f => {
-    const match = f.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
     if (!match) return false;
     const month = match[1];
     if (startDate && month < startDate) return false;
@@ -190,7 +190,7 @@ export async function* queryAsync(query: UsageQuery): AsyncGenerator<UsageRecord
   const endDate = query.endDate?.substring(0, 7) || '';
 
   const relevantFiles = files.filter(f => {
-    const match = f.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
     if (!match) return false;
     const month = match[1];
     if (startDate && month < startDate) return false;
@@ -235,7 +235,7 @@ export function count(query: UsageQuery): number {
   const endDate = query.endDate?.substring(0, 7) || '';
 
   const relevantFiles = files.filter(f => {
-    const match = f.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
     if (!match) return false;
     const month = match[1];
     if (startDate && month < startDate) return false;
@@ -285,7 +285,7 @@ export function cleanup(options: CleanupOptions): CleanupResult {
   const cutoffMonth = cutoffDate.substring(0, 7);
 
   for (const file of files) {
-    const match = file.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(file).match(MONTHLY_FILE_PATTERN);
     if (!match) continue;
 
     const month = match[1];
@@ -354,7 +354,7 @@ export function getProviders(startDate?: string, endDate?: string): string[] {
   const endMonth = endDate?.substring(0, 7) || '';
 
   const relevantFiles = files.filter(f => {
-    const match = f.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
     if (!match) return false;
     const month = match[1];
     if (startMonth && month < startMonth) return false;
@@ -384,7 +384,7 @@ export function getModels(startDate?: string, endDate?: string): string[] {
   const endMonth = endDate?.substring(0, 7) || '';
 
   const relevantFiles = files.filter(f => {
-    const match = f.match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
     if (!match) return false;
     const month = match[1];
     if (startMonth && month < startMonth) return false;

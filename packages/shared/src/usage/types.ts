@@ -30,7 +30,7 @@ export interface UsageRecord {
 }
 
 /**
- * Hourly statistics
+ * Hourly statistics with performance metrics
  */
 export interface HourlyStats {
   hour: number;                         // 0-23
@@ -42,6 +42,37 @@ export interface HourlyStats {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   reasoningTokens: number;
+  // Performance metrics
+  avgLatency?: number;
+  avgTimeToFirstToken?: number;
+  avgSpeed?: number;
+}
+
+/**
+ * Hourly aggregation result (across all providers)
+ */
+export interface HourlyAggregation {
+  hour: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
+}
+
+/**
+ * Performance metrics for charting (time series)
+ */
+export interface PerformanceMetrics {
+  timestamp: string;                    // ISO timestamp or date bucket
+  date: string;                         // YYYY-MM-DD
+  provider: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  avgLatency?: number;
+  avgTimeToFirstToken?: number;
+  avgSpeed?: number;
 }
 
 /**
@@ -60,6 +91,10 @@ export interface DailyUsageSummary {
   totalCacheReadTokens: number;
   totalReasoningTokens: number;
   hourlyBreakdown: HourlyStats[];
+  // Performance metrics
+  avgLatency?: number;
+  avgTimeToFirstToken?: number;
+  avgSpeed?: number;
 }
 
 /**
@@ -75,6 +110,10 @@ export interface ProviderStats {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   reasoningTokens: number;
+  // Performance metrics
+  avgLatency?: number;                  // Average duration in ms
+  avgTimeToFirstToken?: number;         // Average TTFT in ms
+  avgSpeed?: number;                    // Average tokens/second
   models: ModelStats[];
 }
 
@@ -92,6 +131,10 @@ export interface ModelStats {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   reasoningTokens: number;
+  // Performance metrics
+  avgLatency?: number;                  // Average duration in ms
+  avgTimeToFirstToken?: number;         // Average TTFT in ms
+  avgSpeed?: number;                    // Average tokens/second
 }
 
 /**
@@ -121,6 +164,11 @@ export interface AggregatedUsage {
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
   totalReasoningTokens: number;
+  // Performance metrics
+  avgLatency?: number;
+  avgTimeToFirstToken?: number;
+  avgSpeed?: number;
+  cacheHitRatio?: number;               // cacheReadTokens / totalTokens
   byProvider?: ProviderStats[];
   byModel?: ModelStats[];
   byDate?: DailyUsageSummary[];

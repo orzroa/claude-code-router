@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import { Calendar, Download, Trash2, RefreshCw, TrendingUp, Zap, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, Download, Trash2, RefreshCw, TrendingUp, Zap, Clock, AlertCircle, Layers } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Toast } from '@/components/ui/toast';
+
+// Format functions
+function formatTokens(num: number): string {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+}
+
+function formatNumber(num: number): string {
+  return num.toLocaleString();
+}
+
+// Import new components
+import { DateSidebar } from '@/components/usage/DateSidebar';
+import { StatsTable } from '@/components/usage/StatsTable';
+import { PerformanceChart } from '@/components/usage/PerformanceChart';
+import { HourlyTable } from '@/components/usage/HourlyTable';
+import { RecordsTable } from '@/components/usage/RecordsTable';
 
 // Types
 interface UsageSummary {
@@ -35,6 +54,9 @@ interface UsageSummary {
   totalCacheCreationTokens: number;
   totalCacheReadTokens: number;
   totalReasoningTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
+  cacheHitRatio?: number;
   byProvider?: ProviderStats[];
   byModel?: ModelStats[];
   byDate?: DailyUsageSummary[];
@@ -47,6 +69,11 @@ interface ProviderStats {
   failedRequests: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  reasoningTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
   models: ModelStats[];
 }
 
@@ -54,8 +81,15 @@ interface ModelStats {
   model: string;
   provider: string;
   requests: number;
+  successRequests: number;
+  failedRequests: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  reasoningTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
 }
 
 interface DailyUsageSummary {
@@ -65,6 +99,8 @@ interface DailyUsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
 }
 
 interface UsageFilters {
@@ -81,19 +117,33 @@ interface UsageRecord {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  duration?: number;
+  timeToFirstToken?: number;
   success: boolean;
-  stream: boolean;
+  errorMessage?: string;
 }
 
-// Format numbers
-function formatNumber(num: number): string {
-  return num.toLocaleString();
+interface HourlyData {
+  hour: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
 }
 
-function formatTokens(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-  return num.toString();
+interface PerformanceData {
+  timestamp: string;
+  date: string;
+  provider: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  avgLatency?: number;
+  avgTimeToFirstToken?: number;
+  avgSpeed?: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -115,8 +165,16 @@ export function UsagePage() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [filters, setFilters] = useState<UsageFilters | null>(null);
   const [records, setRecords] = useState<UsageRecord[]>([]);
+  const [recordsTotal, setRecordsTotal] = useState(0);
+  const [hourlyData, setHourlyData] = useState<HourlyData[]>([]);
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
+  const [dateHistory, setDateHistory] = useState<{ date: string; requests: number; tokens: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // Cleanup dialog state
   const [isCleanupDialogOpen, setIsCleanupDialogOpen] = useState(false);
@@ -124,28 +182,34 @@ export function UsagePage() {
   const [cleanupDryRun, setCleanupDryRun] = useState(true);
   const [cleanupResult, setCleanupResult] = useState<any>(null);
 
-  // Fetch filters on mount
+  // Fetch filters and date history on mount
   useEffect(() => {
-    const fetchFilters = async () => {
+    const fetchInitialData = async () => {
       try {
-        const data = await api.getUsageFilters();
-        setFilters(data);
+        const [filtersData, dateRangeData] = await Promise.all([
+          api.getUsageFilters(),
+          api.getUsageDaily({ startDate: '2000-01-01', endDate: '2099-12-31' }),
+        ]);
+        setFilters(filtersData);
 
-        // Set default date range
-        if (data.dateRange) {
-          setStartDate(data.dateRange.startDate);
-          setEndDate(data.dateRange.endDate);
-        } else {
-          const today = new Date().toISOString().split('T')[0];
-          setStartDate(today);
-          setEndDate(today);
-        }
+        // Build date history
+        const history = dateRangeData.data.map((d: any) => ({
+          date: d.date,
+          requests: d.requests,
+          tokens: d.totalTokens,
+        })).sort((a: any, b: any) => b.date.localeCompare(a.date));
+        setDateHistory(history);
+
+        // Set default date range to today
+        const today = new Date().toISOString().split('T')[0];
+        setStartDate(today);
+        setEndDate(today);
       } catch (error) {
-        console.error('Failed to fetch filters:', error);
+        console.error('Failed to fetch initial data:', error);
       }
     };
 
-    fetchFilters();
+    fetchInitialData();
   }, []);
 
   // Fetch usage data
@@ -154,20 +218,25 @@ export function UsagePage() {
 
     setIsLoading(true);
     try {
-      const [summaryData, recordsData] = await Promise.all([
-        api.getUsageSummary({ startDate, endDate, provider: provider || undefined, model: model || undefined }),
-        api.getUsageRecords({ startDate, endDate, provider: provider || undefined, model: model || undefined, limit: 50 }),
+      const [summaryData, recordsData, hourlyResponse, performanceResponse] = await Promise.all([
+        api.getUsageSummary({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
+        api.getUsageRecords({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined, limit: pageSize, offset: (page - 1) * pageSize }),
+        api.getUsageHourly({ startDate, endDate }),
+        api.getUsagePerformance({ startDate, endDate }),
       ]);
 
       setSummary(summaryData);
       setRecords(recordsData.records);
+      setRecordsTotal(recordsData.pagination.total);
+      setHourlyData(hourlyResponse.data);
+      setPerformanceData(performanceResponse.data);
     } catch (error) {
       console.error('Failed to fetch usage:', error);
       setToast({ message: t('usage.load_failed'), type: 'error' });
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate, provider, model, t]);
+  }, [startDate, endDate, provider, model, page, pageSize, t]);
 
   useEffect(() => {
     fetchUsage();
@@ -180,8 +249,8 @@ export function UsagePage() {
         format,
         startDate,
         endDate,
-        provider: provider || undefined,
-        model: model || undefined,
+        provider: provider && provider !== 'all' ? provider : undefined,
+        model: model && model !== 'all' ? model : undefined,
       });
 
       // Download file
@@ -223,6 +292,45 @@ export function UsagePage() {
     }
   };
 
+  // Date selection from sidebar
+  const handleDateSelect = (date: string) => {
+    setStartDate(date);
+    setEndDate(date);
+    setPage(1);
+  };
+
+  // Prepare stats data for table
+  const statsData = useMemo(() => {
+    if (!summary?.byModel) return [];
+    return summary.byModel.map(m => ({
+      provider: m.provider,
+      model: Array.isArray(m.model) ? m.model.join(', ') : m.model,
+      requests: m.requests,
+      inputTokens: m.inputTokens,
+      outputTokens: m.outputTokens,
+      cacheCreationTokens: m.cacheCreationTokens,
+      cacheReadTokens: m.cacheReadTokens,
+      avgLatency: m.avgLatency,
+      avgSpeed: m.avgSpeed,
+    }));
+  }, [summary]);
+
+  const totalTokens = (summary?.totalInputTokens || 0) + (summary?.totalOutputTokens || 0);
+
+  // Filter models based on selected provider
+  const filteredModels = useMemo(() => {
+    if (!filters?.models) return [];
+    if (!provider || provider === 'all') return filters.models;
+
+    // Get models for the selected provider from summary data
+    const providerData = summary?.byProvider?.find(p => p.provider === provider);
+    if (providerData?.models) {
+      return providerData.models.map(m => Array.isArray(m.model) ? m.model.join(', ') : m.model);
+    }
+
+    return filters.models;
+  }, [filters, provider, summary]);
+
   if (isLoading && !summary) {
     return (
       <div className="h-screen bg-gray-50 font-sans flex items-center justify-center">
@@ -231,265 +339,256 @@ export function UsagePage() {
     );
   }
 
-  const totalTokens = (summary?.totalInputTokens || 0) + (summary?.totalOutputTokens || 0);
-
   return (
-    <div className="h-screen bg-gray-50 font-sans">
-      {/* Header */}
-      <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-        <h1 className="text-xl font-semibold text-gray-800">{t('usage.title')}</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchUsage}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {t('usage.refresh')}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>
-            <Download className="mr-2 h-4 w-4" />
-            CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport('json')}>
-            <Download className="mr-2 h-4 w-4" />
-            JSON
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsCleanupDialogOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            {t('usage.cleanup')}
-          </Button>
-        </div>
-      </header>
+    <div className="h-screen bg-gray-50 font-sans flex">
+      {/* Left Sidebar - Date History */}
+      <DateSidebar
+        dates={dateHistory}
+        selectedDate={startDate === endDate ? startDate : undefined}
+        onSelect={handleDateSelect}
+        onSelectToday={() => {
+          const today = new Date().toISOString().split('T')[0];
+          handleDateSelect(today);
+        }}
+      />
 
-      <main className="p-6 overflow-auto h-[calc(100vh-4rem)]">
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg">{t('usage.filters')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 flex-wrap">
-              <div className="space-y-2">
-                <Label>{t('usage.start_date')}</Label>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-40"
-                />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="flex h-16 items-center justify-between border-b bg-white px-6">
+          <h1 className="text-xl font-semibold text-gray-800">{t('usage.title')}</h1>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchUsage}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {t('usage.refresh')}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>
+              <Download className="mr-2 h-4 w-4" />
+              CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport('json')}>
+              <Download className="mr-2 h-4 w-4" />
+              JSON
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setIsCleanupDialogOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t('usage.cleanup')}
+            </Button>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto p-6">
+          {/* Filters */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">{t('usage.filters')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 flex-wrap">
+                <div className="space-y-2">
+                  <Label>{t('usage.start_date')}</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                    className="w-40"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('usage.end_date')}</Label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                    className="w-40"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('usage.provider')}</Label>
+                  <Select value={provider} onValueChange={(v) => { setProvider(v); setPage(1); }}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder={t('usage.all_providers')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('usage.all_providers')}</SelectItem>
+                      {filters?.providers.map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('usage.model')}</Label>
+                  <Select value={model} onValueChange={(v) => { setModel(v); setPage(1); }}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder={t('usage.all_models')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('usage.all_models')}</SelectItem>
+                      {filteredModels.map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>{t('usage.end_date')}</Label>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-40"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t('usage.provider')}</Label>
-                <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder={t('usage.all_providers')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">{t('usage.all_providers')}</SelectItem>
-                    {filters?.providers.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>{t('usage.model')}</Label>
-                <Select value={model} onValueChange={setModel}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder={t('usage.all_models')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">{t('usage.all_models')}</SelectItem>
-                    {filters?.models.map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {summary && summary.totalRequests > 0 ? (
-          <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{t('usage.total_requests')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatNumber(summary.totalRequests)}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatNumber(summary.successRequests)} {t('usage.success')} / {formatNumber(summary.failedRequests)} {t('usage.failed')}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{t('usage.input_tokens')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {formatTokens(summary.totalInputTokens)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{formatNumber(summary.totalInputTokens)}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{t('usage.output_tokens')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatTokens(summary.totalOutputTokens)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{formatNumber(summary.totalOutputTokens)}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{t('usage.total_tokens')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatTokens(totalTokens)}</div>
-                  <p className="text-xs text-muted-foreground">{formatNumber(totalTokens)}</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Provider and Model Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* By Provider */}
-              {summary.byProvider && summary.byProvider.length > 0 && (
+          {summary && summary.totalRequests > 0 ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Zap className="h-5 w-5" />
-                      {t('usage.by_provider')}
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      {t('usage.total_requests')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {summary.byProvider.map((p) => (
-                        <div key={p.provider} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <div className="font-medium">{p.provider}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {formatNumber(p.requests)} {t('usage.requests')}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium">{formatTokens(p.inputTokens + p.outputTokens)}</div>
-                            <div className="text-sm text-muted-foreground">{t('usage.tokens')}</div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="text-2xl font-bold">{formatNumber(summary.totalRequests)}</div>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="default" className="text-xs">{summary.successRequests} {t('usage.success')}</Badge>
+                      {summary.failedRequests > 0 && (
+                        <Badge variant="destructive" className="text-xs">{summary.failedRequests} {t('usage.failed')}</Badge>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
-              )}
 
-              {/* By Model */}
-              {summary.byModel && summary.byModel.length > 0 && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5" />
-                      {t('usage.by_model')}
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      {t('usage.total_tokens')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {summary.byModel.slice(0, 10).map((m) => (
-                        <div key={`${m.provider}-${m.model}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <div className="font-medium">{m.model}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {m.provider} · {formatNumber(m.requests)} {t('usage.requests')}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium">{formatTokens(m.inputTokens + m.outputTokens)}</div>
-                            <div className="text-sm text-muted-foreground">{t('usage.tokens')}</div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="text-2xl font-bold">{formatTokens(totalTokens)}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {t('usage.input')}: {formatTokens(summary.totalInputTokens)} · {t('usage.output')}: {formatTokens(summary.totalOutputTokens)}
                     </div>
                   </CardContent>
                 </Card>
-              )}
-            </div>
 
-            {/* Recent Records */}
-            {records.length > 0 && (
-              <Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      {t('usage.avg_latency')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {summary.avgLatency ? (summary.avgLatency >= 1000 ? `${(summary.avgLatency / 1000).toFixed(2)}s` : `${Math.round(summary.avgLatency)}ms`) : '-'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {t('usage.avg_speed')}: {summary.avgSpeed ? formatTokens(summary.avgSpeed) : '-'}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      {t('usage.cache_hit_ratio')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {summary.cacheHitRatio ? `${(summary.cacheHitRatio * 100).toFixed(1)}%` : '-'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {formatTokens(summary.totalCacheReadTokens)} / {formatTokens(totalTokens)}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Statistics Table */}
+              <Card className="mb-6">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    {t('usage.recent_records')}
+                    <Zap className="h-5 w-5" />
+                    {t('usage.by_provider_model')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2">{t('usage.time')}</th>
-                          <th className="text-left p-2">{t('usage.provider')}</th>
-                          <th className="text-left p-2">{t('usage.model')}</th>
-                          <th className="text-right p-2">{t('usage.input')}</th>
-                          <th className="text-right p-2">{t('usage.output')}</th>
-                          <th className="text-center p-2">{t('usage.status')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {records.slice(0, 20).map((record) => (
-                          <tr key={record.id} className="border-b hover:bg-gray-50">
-                            <td className="p-2 text-sm">
-                              {new Date(record.timestamp).toLocaleString()}
-                            </td>
-                            <td className="p-2">{record.provider}</td>
-                            <td className="p-2">{record.model}</td>
-                            <td className="p-2 text-right">{formatNumber(record.inputTokens)}</td>
-                            <td className="p-2 text-right">{formatNumber(record.outputTokens)}</td>
-                            <td className="p-2 text-center">
-                              <span className={`inline-block px-2 py-1 rounded text-xs ${
-                                record.success
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {record.success ? t('usage.success') : t('usage.failed')}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <StatsTable
+                    data={statsData}
+                    groupBy="provider"
+                    loading={isLoading}
+                  />
                 </CardContent>
               </Card>
-            )}
-          </>
-        ) : (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-500 text-lg">{t('usage.no_data')}</p>
-              <p className="text-gray-400 text-sm">{t('usage.no_data_hint')}</p>
-            </CardContent>
-          </Card>
-        )}
-      </main>
+
+              {/* Performance Chart */}
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    {t('usage.performance_chart')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PerformanceChart
+                    data={performanceData}
+                    providers={filters?.providers || []}
+                    loading={isLoading}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Hourly Breakdown */}
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    {t('usage.hourly_breakdown')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <HourlyTable
+                    data={hourlyData}
+                    loading={isLoading}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Records Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Layers className="h-5 w-5" />
+                    {t('usage.request_records')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RecordsTable
+                    records={records}
+                    total={recordsTotal}
+                    page={page}
+                    pageSize={pageSize}
+                    onPageChange={setPage}
+                    onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+                    loading={isLoading}
+                  />
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-gray-500 text-lg">{t('usage.no_data')}</p>
+                <p className="text-gray-400 text-sm">{t('usage.no_data_hint')}</p>
+              </CardContent>
+            </Card>
+          )}
+        </main>
+      </div>
 
       {/* Cleanup Dialog */}
       <Dialog open={isCleanupDialogOpen} onOpenChange={setIsCleanupDialogOpen}>
