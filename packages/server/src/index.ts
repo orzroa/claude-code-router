@@ -7,7 +7,7 @@ import { createServer } from "./server";
 import { apiKeyAuth } from "./middleware/auth";
 import { CONFIG_FILE, HOME_DIR, listPresets, appendAsync, type UsageRecord } from "@CCR/shared";
 import { createStream } from 'rotating-file-stream';
-import { sessionUsageCache } from "@musistudio/llms";
+import { sessionUsageCache, getTokenSpeedStats } from "@musistudio/llms";
 import { SSEParserTransform } from "./utils/SSEParser.transform";
 import { SSESerializerTransform } from "./utils/SSESerializer.transform";
 import { rewriteStream } from "./utils/rewriteStream";
@@ -52,13 +52,41 @@ async function persistUsage(params: {
   debugLog(`persistUsage called: sessionId=${req.sessionId} isStreaming=${isStreaming} usage=${JSON.stringify(usage)}`);
   try {
     const now = new Date();
+
+    // Get performance metrics from token speed plugin
+    let duration: number | undefined;
+    let timeToFirstToken: number | undefined;
+
+    try {
+      const requestId = req.id || `req-${Date.now()}`;
+      const tokenStats = getTokenSpeedStats(requestId);
+      if (tokenStats?.current) {
+        // Calculate duration from startTime and lastTokenTime
+        duration = Math.round(tokenStats.current.lastTokenTime - tokenStats.current.startTime);
+        timeToFirstToken = tokenStats.current.timeToFirstToken;
+        debugLog(`Got performance metrics for request ${requestId}: duration=${duration}ms, ttft=${timeToFirstToken}ms`);
+      } else {
+        debugLog(`No token stats found for request ${requestId}`);
+      }
+    } catch (statsError) {
+      debugLog(`Failed to get token speed stats: ${statsError}`);
+    }
+
+    // Normalize model field to string (handle both array and string formats)
+    let normalizedModel: string;
+    if (Array.isArray(req.model)) {
+      normalizedModel = req.model.join(', ');
+    } else {
+      normalizedModel = req.model || 'unknown';
+    }
+
     const record: Omit<UsageRecord, 'id'> = {
       timestamp: now.toISOString(),
-      date: now.toISOString().split('T')[0],
+      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
       sessionId: req.sessionId,
       requestId: req.id || `req-${Date.now()}`,
       provider: req.provider || 'unknown',
-      model: req.model || 'unknown',
+      model: normalizedModel,
       inputTokens: usage.input_tokens || 0,
       outputTokens: usage.output_tokens || 0,
       cacheCreationInputTokens: usage.cache_creation_input_tokens,
@@ -67,6 +95,8 @@ async function persistUsage(params: {
       stream: isStreaming,
       success,
       errorMessage,
+      duration,
+      timeToFirstToken,
     };
 
     await appendAsync(record);

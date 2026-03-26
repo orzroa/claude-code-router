@@ -12,20 +12,29 @@ interface DateSidebarProps {
   dates: DateItem[];
   selectedDate?: string;
   onSelect: (date: string) => void;
-  onSelectToday?: () => void;
+  onSelectToday: () => void;
 }
 
 export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: DateSidebarProps) {
   const { t } = useTranslation();
 
+  // Always compute today's date in local time
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  // Ensure today's date always appears in the list (even with 0 requests if not already present)
+  const allDates: DateItem[] = [
+    ...(dates.some(d => d.date === todayStr) ? [] : [{ date: todayStr, requests: 0, tokens: 0 }]),
+    ...dates,
+  ];
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
-    if (dateStr === today) return t('usage.today');
+    if (dateStr === todayStr) return t('usage.today');
     if (dateStr === yesterdayStr) return t('usage.yesterday');
 
     return date.toLocaleDateString(undefined, {
@@ -49,24 +58,22 @@ export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: Da
         </div>
       </div>
 
-      {/* Today button */}
-      {onSelectToday && (
-        <div className="p-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={onSelectToday}
-          >
-            {t('usage.today')}
-          </Button>
-        </div>
-      )}
+      {/* Today button — always shown so user can quickly jump to today */}
+      <div className="p-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onSelectToday}
+        >
+          {t('usage.today')}
+        </Button>
+      </div>
 
       {/* Date list */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-2 space-y-1">
-          {dates.map((item) => {
+          {allDates.map((item) => {
             const isSelected = selectedDate === item.date;
             return (
               <button

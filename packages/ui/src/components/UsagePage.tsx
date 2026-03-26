@@ -214,10 +214,15 @@ export function UsagePage() {
           requests: d.requests,
           tokens: d.totalTokens,
         })).sort((a: any, b: any) => b.date.localeCompare(a.date));
-        setDateHistory(history);
 
-        // Set default date range to today
-        const today = new Date().toISOString().split('T')[0];
+        // Always include today's date even if no data exists yet
+        const todayDate = new Date();
+        const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+        if (!history.find((d: any) => d.date === today)) {
+          history.unshift({ date: today, requests: 0, tokens: 0 });
+        }
+
+        setDateHistory(history);
         setStartDate(today);
         setEndDate(today);
       } catch (error) {
@@ -369,7 +374,8 @@ export function UsagePage() {
         selectedDate={startDate === endDate ? startDate : undefined}
         onSelect={handleDateSelect}
         onSelectToday={() => {
-          const today = new Date().toISOString().split('T')[0];
+          const todayDate = new Date();
+          const today = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
           handleDateSelect(today);
         }}
       />
@@ -408,14 +414,24 @@ export function UsagePage() {
             <CardContent>
               <div className="flex gap-4 flex-wrap">
                 <div className="space-y-2">
-                  <Label>{t('usage.date')}</Label>
+                  <Label>{t('usage.start_date')}</Label>
                   <Input
                     type="date"
                     value={startDate}
                     onChange={(e) => {
-                      const date = e.target.value;
-                      setStartDate(date);
-                      setEndDate(date);
+                      setStartDate(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-40"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('usage.end_date')}</Label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
                       setPage(1);
                     }}
                     className="w-40"
