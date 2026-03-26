@@ -146,7 +146,8 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
   const providerMap = new Map<string, ProviderStats & { _perf: PerformanceAccumulator }>();
   const modelMap = new Map<string, ModelStats & { _perf: PerformanceAccumulator }>();
   const dateMap = new Map<string, Map<string, Map<string, DailyUsageSummary & { _perf: PerformanceAccumulator }>>>();
-  const hourlyPerfMap = new Map<string, Map<number, PerformanceAccumulator>>(); // date -> hour -> perf
+  // Track hourly performance by date -> provider -> model -> hour -> perf
+  const hourlyPerfMap = new Map<string, Map<string, Map<string, Map<number, PerformanceAccumulator>>>>();
 
   // Process records
   for (const record of records) {
@@ -289,15 +290,26 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
     hourlyStats.cacheReadTokens += record.cacheReadInputTokens || 0;
     hourlyStats.reasoningTokens += record.reasoningTokens || 0;
 
-    // Track hourly performance separately
+    // Track hourly performance separately by provider and model
     if (!hourlyPerfMap.has(record.date)) {
       hourlyPerfMap.set(record.date, new Map());
     }
     const dateHourlyPerf = hourlyPerfMap.get(record.date)!;
-    if (!dateHourlyPerf.has(hour)) {
-      dateHourlyPerf.set(hour, createPerformanceAccumulator());
+    const providerKey = record.provider;
+    if (!dateHourlyPerf.has(providerKey)) {
+      dateHourlyPerf.set(providerKey, new Map());
     }
-    addRecordPerformance(dateHourlyPerf.get(hour)!, record);
+    const providerHourlyPerf = dateHourlyPerf.get(providerKey)!;
+    // Use model as part of key (handle both string and array formats)
+    const perfModelKey = Array.isArray(record.model) ? record.model.join(',') : String(record.model);
+    if (!providerHourlyPerf.has(perfModelKey)) {
+      providerHourlyPerf.set(perfModelKey, new Map());
+    }
+    const modelHourlyPerf = providerHourlyPerf.get(perfModelKey)!;
+    if (!modelHourlyPerf.has(hour)) {
+      modelHourlyPerf.set(hour, createPerformanceAccumulator());
+    }
+    addRecordPerformance(modelHourlyPerf.get(hour)!, record);
   }
 
   // Calculate global performance metrics
@@ -333,22 +345,31 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
         const perf = calculatePerformance(dailySummary._perf);
         const { _perf, ...summary } = dailySummary;
 
-        // Calculate hourly performance
+        // Calculate hourly performance (now properly separated by provider and model)
         const dateHourlyPerf = hourlyPerfMap.get(summary.date);
         if (dateHourlyPerf) {
-          for (const hourlyStat of summary.hourlyBreakdown) {
-            const hourPerf = dateHourlyPerf.get(hourlyStat.hour);
-            if (hourPerf) {
-              const hourPerformance = calculatePerformance(hourPerf);
-              // Only assign if the value exists (not undefined)
-              if (hourPerformance.avgLatency !== undefined) {
-                hourlyStat.avgLatency = hourPerformance.avgLatency;
-              }
-              if (hourPerformance.avgTimeToFirstToken !== undefined) {
-                hourlyStat.avgTimeToFirstToken = hourPerformance.avgTimeToFirstToken;
-              }
-              if (hourPerformance.avgSpeed !== undefined) {
-                hourlyStat.avgSpeed = hourPerformance.avgSpeed;
+          // Get provider-specific hourly perf
+          const providerHourlyPerf = dateHourlyPerf.get(summary.provider);
+          if (providerHourlyPerf) {
+            // Get model-specific hourly perf (handle both string and array formats)
+            const perfModelKey2 = Array.isArray(summary.model) ? summary.model.join(',') : String(summary.model);
+            const modelHourlyPerf = providerHourlyPerf.get(perfModelKey2);
+            if (modelHourlyPerf) {
+              for (const hourlyStat of summary.hourlyBreakdown) {
+                const hourPerf = modelHourlyPerf.get(hourlyStat.hour);
+                if (hourPerf) {
+                  const hourPerformance = calculatePerformance(hourPerf);
+                  // Only assign if the value exists (not undefined)
+                  if (hourPerformance.avgLatency !== undefined) {
+                    hourlyStat.avgLatency = hourPerformance.avgLatency;
+                  }
+                  if (hourPerformance.avgTimeToFirstToken !== undefined) {
+                    hourlyStat.avgTimeToFirstToken = hourPerformance.avgTimeToFirstToken;
+                  }
+                  if (hourPerformance.avgSpeed !== undefined) {
+                    hourlyStat.avgSpeed = hourPerformance.avgSpeed;
+                  }
+                }
               }
             }
           }
@@ -570,6 +591,7 @@ export function getPerformanceMetrics(
         timestamp: daily.date,
         date: daily.date,
         provider: daily.provider,
+        model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
         requests: daily.totalRequests,
         inputTokens: daily.totalInputTokens,
         outputTokens: daily.totalOutputTokens,
@@ -588,6 +610,7 @@ export function getPerformanceMetrics(
             timestamp,
             date: daily.date,
             provider: daily.provider,
+            model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
             requests: hourly.requests,
             inputTokens: hourly.inputTokens,
             outputTokens: hourly.outputTokens,

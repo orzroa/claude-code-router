@@ -18,6 +18,8 @@ export interface UsageRecord {
   inputTokens: number;
   outputTokens: number;
   cacheCreationInputTokens?: number;
+  // cacheReadInputTokens: populated from LLM API response's usage.cache_read_input_tokens field,
+  // extracted by @musistudio/llms when processing API responses and stored in UsageRecord.
   cacheReadInputTokens?: number;
   reasoningTokens?: number;
 
@@ -56,6 +58,8 @@ export interface HourlyAggregation {
   requests: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
 }
@@ -67,6 +71,7 @@ export interface PerformanceMetrics {
   timestamp: string;                    // ISO timestamp or date bucket
   date: string;                         // YYYY-MM-DD
   provider: string;
+  model?: string;                       // Model name (optional for backward compatibility)
   requests: number;
   inputTokens: number;
   outputTokens: number;
