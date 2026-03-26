@@ -39,18 +39,17 @@ function createPerformanceAccumulator(): PerformanceAccumulator {
 }
 
 function addRecordPerformance(acc: PerformanceAccumulator, record: UsageRecord): void {
-  if (record.duration && record.duration > 0) {
-    acc.durationSum += record.duration;
+  const outputDuration = (record.duration || 0) - (record.timeToFirstToken || 0);
+  if (outputDuration > 0) {
+    acc.durationSum += outputDuration;
     acc.durationCount++;
 
-    // Calculate speed: tokens per second
+    // Calculate speed: tokens per second (using output duration = total duration - TTFT)
     const outputTokens = record.outputTokens || 0;
     if (outputTokens > 0) {
-      const durationSeconds = record.duration / 1000;
-      if (durationSeconds > 0) {
-        acc.speedSum += outputTokens / durationSeconds;
-        acc.speedCount++;
-      }
+      const outputDurationSeconds = outputDuration / 1000;
+      acc.speedSum += outputTokens / outputDurationSeconds;
+      acc.speedCount++;
     }
   }
 
@@ -308,9 +307,9 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
   result.avgSpeed = globalPerformance.avgSpeed;
 
   // Calculate cache hit ratio
-  const totalTokens = result.totalInputTokens + result.totalOutputTokens;
-  if (totalTokens > 0) {
-    result.cacheHitRatio = result.totalCacheReadTokens / totalTokens;
+  const totalInput = result.totalInputTokens + result.totalCacheReadTokens;
+  if (totalInput > 0) {
+    result.cacheHitRatio = result.totalCacheReadTokens / totalInput;
   }
 
   // Set grouped results with performance metrics
@@ -341,7 +340,16 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
             const hourPerf = dateHourlyPerf.get(hourlyStat.hour);
             if (hourPerf) {
               const hourPerformance = calculatePerformance(hourPerf);
-              Object.assign(hourlyStat, hourPerformance);
+              // Only assign if the value exists (not undefined)
+              if (hourPerformance.avgLatency !== undefined) {
+                hourlyStat.avgLatency = hourPerformance.avgLatency;
+              }
+              if (hourPerformance.avgTimeToFirstToken !== undefined) {
+                hourlyStat.avgTimeToFirstToken = hourPerformance.avgTimeToFirstToken;
+              }
+              if (hourPerformance.avgSpeed !== undefined) {
+                hourlyStat.avgSpeed = hourPerformance.avgSpeed;
+              }
             }
           }
         }
@@ -476,8 +484,10 @@ export function getDailyTotals(startDate: string, endDate: string): Array<{
 
 /**
  * Get hourly aggregation across date range
+ * @param provider - Filter by provider name (optional)
+ * @param model - Filter by model name (optional)
  */
-export function getHourlyAggregation(startDate: string, endDate: string): HourlyAggregation[] {
+export function getHourlyAggregation(startDate: string, endDate: string, provider?: string, model?: string): HourlyAggregation[] {
   const aggregated = aggregate({ startDate, endDate });
 
   // Initialize 24 hours
@@ -486,15 +496,28 @@ export function getHourlyAggregation(startDate: string, endDate: string): Hourly
     requests: 0,
     inputTokens: 0,
     outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
   }));
 
-  // Accumulate from daily summaries
+  // Accumulate from daily summaries, applying provider/model filters
   for (const daily of aggregated.byDate || []) {
+    // Apply provider filter
+    if (provider && daily.provider !== provider) continue;
+    // Apply model filter
+    if (model) {
+      const dailyModelStr = Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model);
+      const filterModelStr = Array.isArray(model) ? model.join(',') : String(model);
+      if (dailyModelStr !== filterModelStr) continue;
+    }
+
     for (const hourly of daily.hourlyBreakdown) {
       const data = hourlyData[hourly.hour];
       data.requests += hourly.requests;
       data.inputTokens += hourly.inputTokens;
       data.outputTokens += hourly.outputTokens;
+      data.cacheCreationTokens += hourly.cacheCreationTokens;
+      data.cacheReadTokens += hourly.cacheReadTokens;
 
       // Calculate performance metrics
       if (hourly.avgLatency) {
@@ -533,9 +556,11 @@ export function getHourlyAggregation(startDate: string, endDate: string): Hourly
 export function getPerformanceMetrics(
   startDate: string,
   endDate: string,
-  groupBy: 'day' | 'hour' = 'day'
+  groupBy: 'day' | 'hour' = 'day',
+  provider?: string,
+  model?: string
 ): PerformanceMetrics[] {
-  const aggregated = aggregate({ startDate, endDate });
+  const aggregated = aggregate({ startDate, endDate, provider, model });
   const metrics: PerformanceMetrics[] = [];
 
   if (groupBy === 'day') {

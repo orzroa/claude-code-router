@@ -99,6 +99,20 @@ interface DailyUsageSummary {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheCreationTokens: number;
+  totalCacheReadTokens: number;
+  avgLatency?: number;
+  avgSpeed?: number;
+  hourlyBreakdown: HourlyBreakdown[];
+}
+
+interface HourlyBreakdown {
+  hour: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
 }
@@ -130,6 +144,8 @@ interface HourlyData {
   requests: number;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
 }
@@ -221,8 +237,8 @@ export function UsagePage() {
       const [summaryData, recordsData, hourlyResponse, performanceResponse] = await Promise.all([
         api.getUsageSummary({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
         api.getUsageRecords({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined, limit: pageSize, offset: (page - 1) * pageSize }),
-        api.getUsageHourly({ startDate, endDate }),
-        api.getUsagePerformance({ startDate, endDate }),
+        api.getUsageHourly({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
+        api.getUsagePerformance({ startDate, endDate, groupBy: 'hour', provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
       ]);
 
       setSummary(summaryData);
@@ -320,15 +336,21 @@ export function UsagePage() {
   // Filter models based on selected provider
   const filteredModels = useMemo(() => {
     if (!filters?.models) return [];
-    if (!provider || provider === 'all') return filters.models;
+    if (!provider || provider === 'all') {
+      // Deduplicate models when showing all providers
+      return Array.from(new Set(filters.models));
+    }
 
     // Get models for the selected provider from summary data
     const providerData = summary?.byProvider?.find(p => p.provider === provider);
     if (providerData?.models) {
-      return providerData.models.map(m => Array.isArray(m.model) ? m.model.join(', ') : m.model);
+      const models = providerData.models.map(m => Array.isArray(m.model) ? m.model.join(', ') : m.model);
+      // Deduplicate models for this provider
+      return Array.from(new Set(models));
     }
 
-    return filters.models;
+    // Deduplicate fallback models
+    return Array.from(new Set(filters.models));
   }, [filters, provider, summary]);
 
   if (isLoading && !summary) {
@@ -386,20 +408,16 @@ export function UsagePage() {
             <CardContent>
               <div className="flex gap-4 flex-wrap">
                 <div className="space-y-2">
-                  <Label>{t('usage.start_date')}</Label>
+                  <Label>{t('usage.date')}</Label>
                   <Input
                     type="date"
                     value={startDate}
-                    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                    className="w-40"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('usage.end_date')}</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      setStartDate(date);
+                      setEndDate(date);
+                      setPage(1);
+                    }}
                     className="w-40"
                   />
                 </div>
@@ -461,7 +479,7 @@ export function UsagePage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
                       <Layers className="h-4 w-4" />
-                      {t('usage.total_tokens')}
+                      {t('usage.consumed_tokens')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -552,7 +570,22 @@ export function UsagePage() {
                 <CardContent>
                   <HourlyTable
                     data={hourlyData}
+                    detailedData={summary?.byDate?.flatMap(daily =>
+                      daily.hourlyBreakdown.map(hourly => ({
+                        hour: hourly.hour,
+                        requests: hourly.requests,
+                        inputTokens: hourly.inputTokens,
+                        outputTokens: hourly.outputTokens,
+                        cacheCreationTokens: hourly.cacheCreationTokens,
+                        cacheReadTokens: hourly.cacheReadTokens,
+                        provider: daily.provider,
+                        model: Array.isArray(daily.model) ? daily.model.join(', ') : daily.model,
+                        avgLatency: hourly.avgLatency,
+                        avgSpeed: hourly.avgSpeed,
+                      }))
+                    )}
                     loading={isLoading}
+                    pageFilter={model && model !== 'all' ? 'model' : provider && provider !== 'all' ? 'provider' : 'none'}
                   />
                 </CardContent>
               </Card>
