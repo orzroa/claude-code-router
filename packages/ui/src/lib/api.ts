@@ -323,6 +323,129 @@ class ApiClient {
   async installPresetFromGitHub(repo: string, name?: string): Promise<any> {
     return this.post<any>('/presets/install/github', { repo, name });
   }
+
+  // ========== Usage API methods ==========
+
+  // Get usage records with pagination
+  async getUsageRecords(params: {
+    startDate?: string;
+    endDate?: string;
+    provider?: string;
+    model?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    records: any[];
+    pagination: {
+      total: number;
+      limit: number;
+      offset: number;
+      hasMore: boolean;
+    };
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.provider) queryParams.append('provider', params.provider);
+    if (params.model) queryParams.append('model', params.model);
+    if (params.limit) queryParams.append('limit', params.limit.toString());
+    if (params.offset) queryParams.append('offset', params.offset.toString());
+
+    return this.get(`/usage?${queryParams.toString()}`);
+  }
+
+  // Get usage summary (aggregated statistics)
+  async getUsageSummary(params: {
+    startDate?: string;
+    endDate?: string;
+    provider?: string;
+    model?: string;
+  }): Promise<any> {
+    const queryParams = new URLSearchParams();
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.provider) queryParams.append('provider', params.provider);
+    if (params.model) queryParams.append('model', params.model);
+
+    return this.get(`/usage/summary?${queryParams.toString()}`);
+  }
+
+  // Get daily totals for trend charts
+  async getUsageDaily(params: {
+    startDate: string;
+    endDate: string;
+  }): Promise<{ data: any[] }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('startDate', params.startDate);
+    queryParams.append('endDate', params.endDate);
+
+    return this.get(`/usage/daily?${queryParams.toString()}`);
+  }
+
+  // Get available providers and models for filtering
+  async getUsageFilters(params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{
+    providers: string[];
+    models: string[];
+    dateRange: { startDate: string; endDate: string } | null;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+
+    return this.get(`/usage/filters?${queryParams.toString()}`);
+  }
+
+  // Export usage data
+  async exportUsage(params: {
+    format: 'json' | 'csv';
+    startDate?: string;
+    endDate?: string;
+    provider?: string;
+    model?: string;
+  }): Promise<string> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('format', params.format);
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.provider) queryParams.append('provider', params.provider);
+    if (params.model) queryParams.append('model', params.model);
+
+    const url = `${this.baseUrl}/usage/export?${queryParams.toString()}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.createHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to export usage: ${response.status}`);
+    }
+
+    return response.text();
+  }
+
+  // Cleanup old usage data
+  async cleanupUsage(params: {
+    beforeDate?: string;
+    retentionDays?: number;
+    dryRun?: boolean;
+  }): Promise<{
+    success: boolean;
+    deletedCount: number;
+    deletedFiles: string[];
+    freedBytes: number;
+    dryRun: boolean;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.beforeDate) queryParams.append('beforeDate', params.beforeDate);
+    if (params.retentionDays) queryParams.append('retentionDays', params.retentionDays.toString());
+    if (params.dryRun) queryParams.append('dryRun', 'true');
+
+    return this.delete(`/usage/cleanup?${queryParams.toString()}`);
+  }
 }
 
 // Create a default instance of the API client

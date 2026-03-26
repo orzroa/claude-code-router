@@ -5,7 +5,7 @@ import { join } from "path";
 import { initConfig, initDir } from "./utils";
 import { createServer } from "./server";
 import { apiKeyAuth } from "./middleware/auth";
-import { CONFIG_FILE, HOME_DIR, listPresets } from "@CCR/shared";
+import { CONFIG_FILE, HOME_DIR, listPresets, appendAsync, type UsageRecord } from "@CCR/shared";
 import { createStream } from 'rotating-file-stream';
 import { sessionUsageCache } from "@musistudio/llms";
 import { SSEParserTransform } from "./utils/SSEParser.transform";
@@ -18,6 +18,55 @@ import { EventEmitter } from "node:events";
 import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
 
 const event = new EventEmitter()
+
+// Check if usage tracking is enabled
+const USAGE_TRACKING_ENABLED = process.env.USAGE_TRACKING_ENABLED !== 'false';
+
+/**
+ * Persist usage record to storage
+ */
+async function persistUsage(params: {
+  req: any;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+    reasoning_tokens?: number;
+  };
+  isStreaming: boolean;
+  success: boolean;
+  errorMessage?: string;
+}): Promise<void> {
+  if (!USAGE_TRACKING_ENABLED) return;
+
+  const { req, usage, isStreaming, success, errorMessage } = params;
+  if (!usage) return;
+
+  try {
+    const now = new Date();
+    const record: Omit<UsageRecord, 'id'> = {
+      timestamp: now.toISOString(),
+      date: now.toISOString().split('T')[0],
+      sessionId: req.sessionId,
+      requestId: req.id || `req-${Date.now()}`,
+      provider: req.provider || 'unknown',
+      model: req.model || 'unknown',
+      inputTokens: usage.input_tokens || 0,
+      outputTokens: usage.output_tokens || 0,
+      cacheCreationInputTokens: usage.cache_creation_input_tokens,
+      cacheReadInputTokens: usage.cache_read_input_tokens,
+      reasoningTokens: usage.reasoning_tokens,
+      stream: isStreaming,
+      success,
+      errorMessage,
+    };
+
+    await appendAsync(record);
+  } catch (err) {
+    console.error('Failed to persist usage:', err);
+  }
+}
 
 async function initializeClaudeConfig() {
   const homeDir = homedir();
@@ -390,6 +439,13 @@ async function getServer(options: RunOptions = {}) {
               try {
                 const message = JSON.parse(str);
                 sessionUsageCache.put(req.sessionId, message.usage);
+                // Persist usage for streaming response
+                persistUsage({
+                  req,
+                  usage: message.usage,
+                  isStreaming: true,
+                  success: true,
+                }).catch(err => console.error('Failed to persist streaming usage:', err));
               } catch {}
             }
           } catch (readError: any) {
@@ -406,6 +462,16 @@ async function getServer(options: RunOptions = {}) {
         return done(null, originalStream)
       }
       sessionUsageCache.put(req.sessionId, payload.usage);
+      // Persist usage for non-streaming response
+      if (payload.usage) {
+        persistUsage({
+          req,
+          usage: payload.usage,
+          isStreaming: false,
+          success: !payload.error,
+          errorMessage: payload.error?.message,
+        }).catch(err => console.error('Failed to persist non-streaming usage:', err));
+      }
       if (typeof payload ==='object') {
         if (payload.error) {
           return done(payload.error, null)

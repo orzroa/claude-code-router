@@ -10,3 +10,6 @@ export * from './preset/readPreset';
 export * from './preset/schema';
 export * from './preset/marketplace';
 
+// Export usage tracking functionality
+export * from './usage';
+
