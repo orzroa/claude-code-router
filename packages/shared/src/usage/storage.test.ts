@@ -46,8 +46,8 @@ function appendRecord(record: Record<string, any>): Record<string, any> {
     ...record,
   };
 
-  const month = record.date.substring(0, 7);
-  const filePath = path.join(usageDir, `usage-${month}.jsonl`);
+  // Use daily file path
+  const filePath = path.join(usageDir, `usage-${record.date}.jsonl`);
   const line = JSON.stringify(fullRecord) + '\n';
   fs.appendFileSync(filePath, line, 'utf-8');
 
@@ -143,12 +143,12 @@ describe('Usage Storage', () => {
       expect(result.model).toBe(record.model);
     });
 
-    it('should create monthly file if it does not exist', () => {
+    it('should create daily file if it does not exist', () => {
       const record = createTestRecord({ date: '2025-03-25' });
       appendRecord(record);
 
       const usageDir = getUsageDir();
-      const filePath = path.join(usageDir, 'usage-2025-03.jsonl');
+      const filePath = path.join(usageDir, 'usage-2025-03-25.jsonl');
       expect(fs.existsSync(filePath)).toBe(true);
     });
 

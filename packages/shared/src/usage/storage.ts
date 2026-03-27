@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import lockfile from 'proper-lockfile';
 import { HOME_DIR } from '../constants';
 import type {
   UsageRecord,
@@ -16,8 +17,8 @@ import type {
 // Storage directory
 export const USAGE_DIR = path.join(HOME_DIR, 'usage');
 
-// Monthly file pattern: usage-YYYY-MM.jsonl
-const MONTHLY_FILE_PATTERN = /^usage-(\d{4}-\d{2})\.jsonl$/;
+// Daily file pattern: usage-YYYY-MM-DD.jsonl
+const DAILY_FILE_PATTERN = /^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
 /**
  * Ensure the usage directory exists
@@ -29,12 +30,11 @@ function ensureUsageDir(): void {
 }
 
 /**
- * Get the monthly file path for a given date
+ * Get the daily file path for a given date
  */
-function getMonthlyFilePath(date: string): string {
-  // date is YYYY-MM-DD, extract YYYY-MM
-  const month = date.substring(0, 7);
-  return path.join(USAGE_DIR, `usage-${month}.jsonl`);
+function getDailyFilePath(date: string): string {
+  // date is YYYY-MM-DD
+  return path.join(USAGE_DIR, `usage-${date}.jsonl`);
 }
 
 /**
@@ -55,10 +55,16 @@ export function append(record: Omit<UsageRecord, 'id'>): UsageRecord {
     ...record,
   };
 
-  const filePath = getMonthlyFilePath(record.date);
+  const filePath = getDailyFilePath(record.date);
   const line = JSON.stringify(fullRecord) + '\n';
 
-  fs.appendFileSync(filePath, line, 'utf-8');
+  // Use file locking to prevent concurrent write corruption
+  const release = lockfile.lockSync(filePath, { stale: 5000 });
+  try {
+    fs.appendFileSync(filePath, line, 'utf-8');
+  } finally {
+    release();
+  }
 
   return fullRecord;
 }
@@ -74,31 +80,37 @@ export async function appendAsync(record: Omit<UsageRecord, 'id'>): Promise<Usag
     ...record,
   };
 
-  const filePath = getMonthlyFilePath(record.date);
+  const filePath = getDailyFilePath(record.date);
   const line = JSON.stringify(fullRecord) + '\n';
 
-  await fs.promises.appendFile(filePath, line, 'utf-8');
+  // Use file locking to prevent concurrent write corruption
+  const release = await lockfile.lock(filePath, { stale: 5000 });
+  try {
+    await fs.promises.appendFile(filePath, line, 'utf-8');
+  } finally {
+    await release();
+  }
 
   return fullRecord;
 }
 
 /**
- * List all monthly files
+ * List all daily files
  */
-export function listMonthlyFiles(): string[] {
+export function listDailyFiles(): string[] {
   ensureUsageDir();
 
   const files = fs.readdirSync(USAGE_DIR);
   return files
-    .filter(f => MONTHLY_FILE_PATTERN.test(f))
+    .filter(f => DAILY_FILE_PATTERN.test(f))
     .sort()
     .map(f => path.join(USAGE_DIR, f));
 }
 
 /**
- * Parse a monthly file and yield records
+ * Parse a daily file and yield records
  */
-export function* readMonthlyFile(filePath: string): Generator<UsageRecord> {
+export function* readDailyFile(filePath: string): Generator<UsageRecord> {
   if (!fs.existsSync(filePath)) {
     return;
   }
@@ -117,9 +129,9 @@ export function* readMonthlyFile(filePath: string): Generator<UsageRecord> {
 }
 
 /**
- * Parse a monthly file asynchronously
+ * Parse a daily file asynchronously
  */
-async function* readMonthlyFileAsync(filePath: string): AsyncGenerator<UsageRecord> {
+async function* readDailyFileAsync(filePath: string): AsyncGenerator<UsageRecord> {
   if (!fs.existsSync(filePath)) {
     return;
   }
@@ -139,37 +151,28 @@ async function* readMonthlyFileAsync(filePath: string): AsyncGenerator<UsageReco
 
 /**
  * Query usage records
+ * Note: Only supports single-day queries (startDate must equal endDate)
  */
 export function query(query: UsageQuery): UsageRecord[] {
-  const files = listMonthlyFiles();
-  const records: UsageRecord[] = [];
-
-  // Filter files by date range
-  const startDate = query.startDate?.substring(0, 7) || '';
-  const endDate = query.endDate?.substring(0, 7) || '';
-
-  const relevantFiles = files.filter(f => {
-    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
-    if (!match) return false;
-    const month = match[1];
-    if (startDate && month < startDate) return false;
-    if (endDate && month > endDate) return false;
-    return true;
-  });
-
-  for (const file of relevantFiles) {
-    for (const record of readMonthlyFile(file)) {
-      // Apply filters
-      if (query.startDate && record.date < query.startDate) continue;
-      if (query.endDate && record.date > query.endDate) continue;
-      if (query.provider && record.provider !== query.provider) continue;
-      if (query.model && record.model !== query.model) continue;
-
-      records.push(record);
-    }
+  // Single-day query: only read one file
+  const date = query.startDate;
+  if (!date) {
+    return [];
   }
 
-  // Sort by timestamp descending
+  const filePath = getDailyFilePath(date);
+  const records: UsageRecord[] = [];
+
+  for (const record of readDailyFile(filePath)) {
+    // Apply filters
+    if (query.provider && record.provider !== query.provider) continue;
+    if (query.model && record.model !== query.model) continue;
+
+    records.push(record);
+  }
+
+  // Sort by timestamp descending (records within a day are already in order,
+  // but sort to ensure correct order after filtering)
   records.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   // Apply pagination
@@ -181,78 +184,57 @@ export function query(query: UsageQuery): UsageRecord[] {
 
 /**
  * Query usage records asynchronously
+ * Note: Only supports single-day queries (startDate must equal endDate)
  */
 export async function* queryAsync(query: UsageQuery): AsyncGenerator<UsageRecord> {
-  const files = listMonthlyFiles();
+  // Single-day query: only read one file
+  const date = query.startDate;
+  if (!date) {
+    return;
+  }
 
-  // Filter files by date range
-  const startDate = query.startDate?.substring(0, 7) || '';
-  const endDate = query.endDate?.substring(0, 7) || '';
-
-  const relevantFiles = files.filter(f => {
-    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
-    if (!match) return false;
-    const month = match[1];
-    if (startDate && month < startDate) return false;
-    if (endDate && month > endDate) return false;
-    return true;
-  });
+  const filePath = getDailyFilePath(date);
 
   let count = 0;
   const offset = query.offset || 0;
   const limit = query.limit || Infinity;
 
-  for (const file of relevantFiles) {
-    for await (const record of readMonthlyFileAsync(file)) {
-      // Apply filters
-      if (query.startDate && record.date < query.startDate) continue;
-      if (query.endDate && record.date > query.endDate) continue;
-      if (query.provider && record.provider !== query.provider) continue;
-      if (query.model && record.model !== query.model) continue;
+  for await (const record of readDailyFileAsync(filePath)) {
+    // Apply filters
+    if (query.provider && record.provider !== query.provider) continue;
+    if (query.model && record.model !== query.model) continue;
 
-      count++;
+    count++;
 
-      // Skip offset
-      if (count <= offset) continue;
+    // Skip offset
+    if (count <= offset) continue;
 
-      // Stop at limit
-      if (count > offset + limit) return;
+    // Stop at limit
+    if (count > offset + limit) return;
 
-      yield record;
-    }
+    yield record;
   }
 }
 
 /**
  * Get count of records matching query
+ * Note: Only supports single-day queries
  */
 export function count(query: UsageQuery): number {
-  const files = listMonthlyFiles();
+  const date = query.startDate;
+  if (!date) {
+    return 0;
+  }
+
+  const filePath = getDailyFilePath(date);
   let total = 0;
 
-  // Filter files by date range
-  const startDate = query.startDate?.substring(0, 7) || '';
-  const endDate = query.endDate?.substring(0, 7) || '';
+  for (const record of readDailyFile(filePath)) {
+    // Apply filters
+    if (query.provider && record.provider !== query.provider) continue;
+    if (query.model && record.model !== query.model) continue;
 
-  const relevantFiles = files.filter(f => {
-    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
-    if (!match) return false;
-    const month = match[1];
-    if (startDate && month < startDate) return false;
-    if (endDate && month > endDate) return false;
-    return true;
-  });
-
-  for (const file of relevantFiles) {
-    for (const record of readMonthlyFile(file)) {
-      // Apply filters
-      if (query.startDate && record.date < query.startDate) continue;
-      if (query.endDate && record.date > query.endDate) continue;
-      if (query.provider && record.provider !== query.provider) continue;
-      if (query.model && record.model !== query.model) continue;
-
-      total++;
-    }
+    total++;
   }
 
   return total;
@@ -260,6 +242,7 @@ export function count(query: UsageQuery): number {
 
 /**
  * Cleanup old records
+ * Note: Works with daily files - deletes entire files older than retention period
  */
 export function cleanup(options: CleanupOptions): CleanupResult {
   const result: CleanupResult = {
@@ -268,7 +251,7 @@ export function cleanup(options: CleanupOptions): CleanupResult {
     freedBytes: 0,
   };
 
-  const files = listMonthlyFiles();
+  const files = listDailyFiles();
 
   // Calculate cutoff date
   let cutoffDate: string;
@@ -282,22 +265,20 @@ export function cleanup(options: CleanupOptions): CleanupResult {
     return result;
   }
 
-  const cutoffMonth = cutoffDate.substring(0, 7);
-
   for (const file of files) {
-    const match = path.basename(file).match(MONTHLY_FILE_PATTERN);
+    const match = path.basename(file).match(DAILY_FILE_PATTERN);
     if (!match) continue;
 
-    const month = match[1];
+    const date = match[1];
 
-    // If the entire month is before cutoff, delete the file
-    if (month < cutoffMonth) {
+    // If the day is before cutoff, delete the file
+    if (date < cutoffDate) {
       if (options.dryRun) {
         const stats = fs.statSync(file);
         result.deletedFiles.push(file);
         result.freedBytes += stats.size;
         // Count records
-        for (const _ of readMonthlyFile(file)) {
+        for (const _ of readDailyFile(file)) {
           result.deletedCount++;
         }
       } else {
@@ -305,36 +286,11 @@ export function cleanup(options: CleanupOptions): CleanupResult {
         result.freedBytes += stats.size;
 
         // Count records before deleting
-        for (const _ of readMonthlyFile(file)) {
+        for (const _ of readDailyFile(file)) {
           result.deletedCount++;
         }
 
         fs.unlinkSync(file);
-        result.deletedFiles.push(file);
-      }
-    } else if (month === cutoffMonth) {
-      // Need to filter records within the file
-      const records: UsageRecord[] = [];
-      let hasOldRecords = false;
-
-      for (const record of readMonthlyFile(file)) {
-        if (record.date < cutoffDate) {
-          hasOldRecords = true;
-          result.deletedCount++;
-        } else {
-          records.push(record);
-        }
-      }
-
-      if (hasOldRecords && !options.dryRun) {
-        // Rewrite the file without old records
-        const content = records.map(r => JSON.stringify(r)).join('\n');
-        if (content) {
-          fs.writeFileSync(file, content + '\n', 'utf-8');
-        } else {
-          // All records deleted, remove the file
-          fs.unlinkSync(file);
-        }
         result.deletedFiles.push(file);
       }
     }
@@ -345,27 +301,26 @@ export function cleanup(options: CleanupOptions): CleanupResult {
 
 /**
  * Get unique providers in a date range
+ * Note: Iterates through daily files in the date range
  */
 export function getProviders(startDate?: string, endDate?: string): string[] {
   const providers = new Set<string>();
-  const files = listMonthlyFiles();
 
-  const startMonth = startDate?.substring(0, 7) || '';
-  const endMonth = endDate?.substring(0, 7) || '';
+  // Get all daily files
+  const files = listDailyFiles();
 
-  const relevantFiles = files.filter(f => {
-    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
-    if (!match) return false;
-    const month = match[1];
-    if (startMonth && month < startMonth) return false;
-    if (endMonth && month > endMonth) return false;
-    return true;
-  });
+  for (const file of files) {
+    // Extract date from filename
+    const match = path.basename(file).match(/^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (!match) continue;
 
-  for (const file of relevantFiles) {
-    for (const record of readMonthlyFile(file)) {
-      if (startDate && record.date < startDate) continue;
-      if (endDate && record.date > endDate) continue;
+    const fileDate = match[1];
+
+    // Filter by date range if provided
+    if (startDate && fileDate < startDate) continue;
+    if (endDate && fileDate > endDate) continue;
+
+    for (const record of readDailyFile(file)) {
       providers.add(record.provider);
     }
   }
@@ -375,30 +330,28 @@ export function getProviders(startDate?: string, endDate?: string): string[] {
 
 /**
  * Get unique models in a date range
+ * Note: Iterates through daily files in the date range
  */
 export function getModels(startDate?: string, endDate?: string): string[] {
   const models = new Set<string>();
-  const files = listMonthlyFiles();
 
-  const startMonth = startDate?.substring(0, 7) || '';
-  const endMonth = endDate?.substring(0, 7) || '';
+  // Get all daily files
+  const files = listDailyFiles();
 
-  const relevantFiles = files.filter(f => {
-    const match = path.basename(f).match(MONTHLY_FILE_PATTERN);
-    if (!match) return false;
-    const month = match[1];
-    if (startMonth && month < startMonth) return false;
-    if (endMonth && month > endMonth) return false;
-    return true;
-  });
+  for (const file of files) {
+    // Extract date from filename
+    const match = path.basename(file).match(/^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (!match) continue;
 
-  for (const file of relevantFiles) {
-    for (const record of readMonthlyFile(file)) {
-      if (startDate && record.date < startDate) continue;
-      if (endDate && record.date > endDate) continue;
+    const fileDate = match[1];
+
+    // Filter by date range if provided
+    if (startDate && fileDate < startDate) continue;
+    if (endDate && fileDate > endDate) continue;
+
+    for (const record of readDailyFile(file)) {
       // Handle both string and array model formats
       if (Array.isArray(record.model)) {
-        // If model is an array, add each item
         record.model.forEach(m => models.add(m));
       } else {
         models.add(record.model);

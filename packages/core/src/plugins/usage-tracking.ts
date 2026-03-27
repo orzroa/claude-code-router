@@ -46,8 +46,18 @@ export const usageTrackingPlugin: CCRPlugin = {
     fastify.addHook('onSend', async (request, _reply, payload) => {
       const req = request as any;
 
-      // Only process /v1/messages requests with sessionId
-      if (!req.sessionId || !req.pathname?.endsWith('/v1/messages')) {
+      // Only process requests with sessionId and known API paths
+      if (!req.sessionId) {
+        return payload;
+      }
+
+      // Support multiple API path patterns
+      const pathname = req.pathname || '';
+      const isMessagesPath = pathname.endsWith('/v1/messages');
+      const isChatPath = pathname.endsWith('/chat/completions');
+
+      if (!isMessagesPath && !isChatPath) {
+        fastify.log?.debug(`Skipping usage tracking for unknown path: ${pathname}`);
         return payload;
       }
 
@@ -173,6 +183,14 @@ async function persistUsageRecord(
     if (tokenStats) {
       duration = Math.round(tokenStats.lastTokenTime - tokenStats.startTime);
       timeToFirstToken = tokenStats.timeToFirstToken;
+    } else {
+      // Fallback: token-speed plugin may not be enabled
+      log?.debug('Token-speed stats not available, performance metrics will be incomplete');
+      // Use request start time as fallback if available
+      const startTime = req.requestStartTime;
+      if (startTime) {
+        duration = Math.round(Date.now() - startTime);
+      }
     }
 
     // Normalize model field to string (handle both array and string formats)
@@ -215,6 +233,33 @@ async function registerUsageRoutes(
   fastify: FastifyInstance,
   retentionDays: number
 ): Promise<void> {
+  // Maximum limit for pagination to prevent memory exhaustion attacks
+  const MAX_LIMIT = 1000;
+
+  /**
+   * Safely parse integer from query parameter with optional max limit
+   * Returns defaultValue if parsing fails or value is not a pure integer string
+   */
+  const parseSafeInt = (value: any, defaultValue: number, maxValue?: number): number => {
+    if (value === undefined || value === null || value === '') {
+      return defaultValue;
+    }
+    // Check if it's a valid integer string (no trailing non-numeric chars)
+    if (!/^-?\d+$/.test(String(value))) {
+      fastify.log?.warn(`Invalid integer parameter: ${value}, using default: ${defaultValue}`);
+      return defaultValue;
+    }
+    const num = Number(value);
+    if (isNaN(num)) {
+      fastify.log?.warn(`NaN result for parameter: ${value}, using default: ${defaultValue}`);
+      return defaultValue;
+    }
+    // Apply max limit if specified
+    if (maxValue !== undefined) {
+      return Math.min(Math.max(1, num), maxValue);
+    }
+    return num;
+  };
   // GET /api/usage - Get usage records with pagination
   fastify.get('/api/usage', async (req, reply) => {
     try {
@@ -223,8 +268,8 @@ async function registerUsageRoutes(
         endDate: (req.query as any).endDate,
         provider: (req.query as any).provider,
         model: (req.query as any).model,
-        limit: (req.query as any).limit ? parseInt((req.query as any).limit) : 100,
-        offset: (req.query as any).offset ? parseInt((req.query as any).offset) : 0,
+        limit: parseSafeInt((req.query as any).limit, 100, MAX_LIMIT),
+        offset: parseSafeInt((req.query as any).offset, 0),
       };
 
       const records = query(queryObj);
@@ -362,7 +407,7 @@ async function registerUsageRoutes(
           'id', 'timestamp', 'date', 'sessionId', 'requestId',
           'provider', 'model', 'inputTokens', 'outputTokens',
           'cacheCreationInputTokens', 'cacheReadInputTokens', 'reasoningTokens',
-          'stream', 'success', 'errorMessage', 'duration'
+          'stream', 'success', 'errorMessage', 'duration', 'timeToFirstToken'
         ];
 
         const csvLines = [
@@ -396,9 +441,7 @@ async function registerUsageRoutes(
     try {
       const options: CleanupOptions = {
         beforeDate: (req.query as any).beforeDate,
-        retentionDays: (req.query as any).retentionDays
-          ? parseInt((req.query as any).retentionDays)
-          : retentionDays,
+        retentionDays: parseSafeInt((req.query as any).retentionDays, retentionDays),
         dryRun: (req.query as any).dryRun === 'true',
       };
 

@@ -2,6 +2,7 @@
  * Usage aggregator - handles statistical aggregation of usage data
  */
 
+import path from 'node:path';
 import type {
   UsageRecord,
   UsageQuery,
@@ -13,7 +14,7 @@ import type {
   HourlyAggregation,
   PerformanceMetrics,
 } from './types';
-import { query, listMonthlyFiles, readMonthlyFile } from './storage';
+import { query, listDailyFiles, readDailyFile } from './storage';
 
 /**
  * Performance tracking helper
@@ -87,6 +88,63 @@ function calculatePerformance(acc: PerformanceAccumulator): {
 }
 
 /**
+ * Helper type for stats objects with performance accumulator
+ */
+type StatsWithPerf<T = {}> = T & { _perf: PerformanceAccumulator };
+
+/**
+ * Accumulate record data into stats object (for ProviderStats and ModelStats)
+ * Eliminates duplicate code for request/token counting
+ */
+function accumulateRecord<T extends {
+  requests: number;
+  successRequests: number;
+  failedRequests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  reasoningTokens: number;
+}>(
+  stats: StatsWithPerf<T>,
+  record: UsageRecord
+): void {
+  stats.requests++;
+  if (record.success) {
+    stats.successRequests++;
+  } else {
+    stats.failedRequests++;
+  }
+  stats.inputTokens += record.inputTokens || 0;
+  stats.outputTokens += record.outputTokens || 0;
+  stats.cacheCreationTokens += record.cacheCreationInputTokens || 0;
+  stats.cacheReadTokens += record.cacheReadInputTokens || 0;
+  stats.reasoningTokens += record.reasoningTokens || 0;
+  addRecordPerformance(stats._perf, record);
+}
+
+/**
+ * Accumulate record data into daily summary (uses 'total' prefix for fields)
+ */
+function accumulateDailyRecord(
+  stats: StatsWithPerf<DailyUsageSummary>,
+  record: UsageRecord
+): void {
+  stats.totalRequests++;
+  if (record.success) {
+    stats.successRequests++;
+  } else {
+    stats.failedRequests++;
+  }
+  stats.totalInputTokens += record.inputTokens || 0;
+  stats.totalOutputTokens += record.outputTokens || 0;
+  stats.totalCacheCreationTokens += record.cacheCreationInputTokens || 0;
+  stats.totalCacheReadTokens += record.cacheReadInputTokens || 0;
+  stats.totalReasoningTokens += record.reasoningTokens || 0;
+  addRecordPerformance(stats._perf, record);
+}
+
+/**
  * Create empty hourly stats
  */
 function createEmptyHourlyStats(): HourlyStats[] {
@@ -152,7 +210,7 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
 
   // Process records
   for (const record of records) {
-    // Totals
+    // Accumulate global totals (inline, only once)
     result.totalRequests++;
     if (record.success) {
       result.successRequests++;
@@ -164,8 +222,6 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
     result.totalCacheCreationTokens += record.cacheCreationInputTokens || 0;
     result.totalCacheReadTokens += record.cacheReadInputTokens || 0;
     result.totalReasoningTokens += record.reasoningTokens || 0;
-
-    // Global performance
     addRecordPerformance(globalPerf, record);
 
     // By provider
@@ -186,15 +242,7 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
       };
       providerMap.set(record.provider, providerStats);
     }
-    providerStats.requests++;
-    if (record.success) providerStats.successRequests++;
-    else providerStats.failedRequests++;
-    providerStats.inputTokens += record.inputTokens || 0;
-    providerStats.outputTokens += record.outputTokens || 0;
-    providerStats.cacheCreationTokens += record.cacheCreationInputTokens || 0;
-    providerStats.cacheReadTokens += record.cacheReadInputTokens || 0;
-    providerStats.reasoningTokens += record.reasoningTokens || 0;
-    addRecordPerformance(providerStats._perf, record);
+    accumulateRecord(providerStats, record);
 
     // By model
     // Normalize model to string (handle both string and array)
@@ -217,15 +265,7 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
       };
       modelMap.set(modelKey, modelStats);
     }
-    modelStats.requests++;
-    if (record.success) modelStats.successRequests++;
-    else modelStats.failedRequests++;
-    modelStats.inputTokens += record.inputTokens || 0;
-    modelStats.outputTokens += record.outputTokens || 0;
-    modelStats.cacheCreationTokens += record.cacheCreationInputTokens || 0;
-    modelStats.cacheReadTokens += record.cacheReadInputTokens || 0;
-    modelStats.reasoningTokens += record.reasoningTokens || 0;
-    addRecordPerformance(modelStats._perf, record);
+    accumulateRecord(modelStats, record);
 
     // Update provider's models list
     // Compare using normalized string (handle both string and array)
@@ -268,16 +308,8 @@ export function aggregate(queryParams: UsageQuery): AggregatedUsage {
       providerEntry.set(record.model, dailySummary);
     }
 
-    // Update daily summary
-    dailySummary.totalRequests++;
-    if (record.success) dailySummary.successRequests++;
-    else dailySummary.failedRequests++;
-    dailySummary.totalInputTokens += record.inputTokens || 0;
-    dailySummary.totalOutputTokens += record.outputTokens || 0;
-    dailySummary.totalCacheCreationTokens += record.cacheCreationInputTokens || 0;
-    dailySummary.totalCacheReadTokens += record.cacheReadInputTokens || 0;
-    dailySummary.totalReasoningTokens += record.reasoningTokens || 0;
-    addRecordPerformance(dailySummary._perf, record);
+    // Update daily summary using helper
+    accumulateDailyRecord(dailySummary, record);
 
     // Update hourly breakdown
     const hour = new Date(record.timestamp).getHours();
@@ -438,7 +470,7 @@ export function formatNumber(num: number): string {
  * Get available date range in the data
  */
 export function getAvailableDateRange(): { startDate: string; endDate: string } | null {
-  const files = listMonthlyFiles();
+  const files = listDailyFiles();
   if (files.length === 0) {
     return null;
   }
@@ -447,9 +479,12 @@ export function getAvailableDateRange(): { startDate: string; endDate: string } 
   let maxDate = '';
 
   for (const file of files) {
-    for (const record of readMonthlyFile(file)) {
-      if (!minDate || record.date < minDate) minDate = record.date;
-      if (!maxDate || record.date > maxDate) maxDate = record.date;
+    // Extract date from filename: usage-YYYY-MM-DD.jsonl -> YYYY-MM-DD
+    const match = path.basename(file).match(/^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (match) {
+      const date = match[1];
+      if (!minDate || date < minDate) minDate = date;
+      if (!maxDate || date > maxDate) maxDate = date;
     }
   }
 
@@ -470,8 +505,6 @@ export function getDailyTotals(startDate: string, endDate: string): Array<{
   outputTokens: number;
   totalTokens: number;
 }> {
-  const aggregated = aggregate({ startDate, endDate });
-
   // Group by date
   const dateTotals = new Map<string, {
     date: string;
@@ -481,22 +514,40 @@ export function getDailyTotals(startDate: string, endDate: string): Array<{
     totalTokens: number;
   }>();
 
-  for (const daily of aggregated.byDate || []) {
-    let entry = dateTotals.get(daily.date);
-    if (!entry) {
-      entry = {
-        date: daily.date,
-        requests: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-      };
-      dateTotals.set(daily.date, entry);
+  // Get all daily files and filter by date range
+  const files = listDailyFiles();
+
+  for (const file of files) {
+    // Extract date from filename: usage-YYYY-MM-DD.jsonl -> YYYY-MM-DD
+    const match = path.basename(file).match(/^usage-(\d{4}-\d{2}-\d{2})\.jsonl$/);
+    if (!match) continue;
+
+    const fileDate = match[1];
+
+    // Filter by date range
+    if (fileDate < startDate || fileDate > endDate) continue;
+
+    // Read and aggregate this file
+    for (const record of readDailyFile(file)) {
+      // Group by provider/model combination
+      const key = `${record.provider}/${Array.isArray(record.model) ? record.model.join(',') : record.model}`;
+
+      let entry = dateTotals.get(record.date);
+      if (!entry) {
+        entry = {
+          date: record.date,
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        };
+        dateTotals.set(record.date, entry);
+      }
+      entry.requests++;
+      entry.inputTokens += record.inputTokens || 0;
+      entry.outputTokens += record.outputTokens || 0;
+      entry.totalTokens += (record.inputTokens || 0) + (record.outputTokens || 0);
     }
-    entry.requests += daily.totalRequests;
-    entry.inputTokens += daily.totalInputTokens;
-    entry.outputTokens += daily.totalOutputTokens;
-    entry.totalTokens += daily.totalInputTokens + daily.totalOutputTokens;
   }
 
   return Array.from(dateTotals.values()).sort((a, b) =>
@@ -510,8 +561,6 @@ export function getDailyTotals(startDate: string, endDate: string): Array<{
  * @param model - Filter by model name (optional)
  */
 export function getHourlyAggregation(startDate: string, endDate: string, provider?: string, model?: string): HourlyAggregation[] {
-  const aggregated = aggregate({ startDate, endDate });
-
   // Extended type to track total output duration for correct speed calculation
   type HourlyDataExtended = HourlyAggregation & { totalOutputDuration: number };
 
@@ -528,42 +577,55 @@ export function getHourlyAggregation(startDate: string, endDate: string, provide
     totalOutputDuration: 0,
   }));
 
-  // Accumulate from daily summaries, applying provider/model filters
-  for (const daily of aggregated.byDate || []) {
-    // Apply provider filter
-    if (provider && daily.provider !== provider) continue;
-    // Apply model filter
-    if (model) {
-      const dailyModelStr = Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model);
-      const filterModelStr = Array.isArray(model) ? model.join(',') : String(model);
-      if (dailyModelStr !== filterModelStr) continue;
-    }
+  // Iterate through each day in the range
+  const currentDate = new Date(startDate);
+  const end = new Date(endDate);
 
-    for (const hourly of daily.hourlyBreakdown) {
-      const data = hourlyData[hourly.hour];
-      data.requests += hourly.requests;
-      data.inputTokens += hourly.inputTokens;
-      data.outputTokens += hourly.outputTokens;
-      data.cacheCreationTokens += hourly.cacheCreationTokens;
-      data.cacheReadTokens += hourly.cacheReadTokens;
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split('T')[0];
 
-      // Calculate performance metrics
-      if (hourly.avgLatency !== undefined && hourly.avgLatency > 0) {
-        // Accumulate total output duration (avgLatency * requests)
-        data.totalOutputDuration += hourly.avgLatency * hourly.requests;
-        // Recalculate weighted average latency
-        const totalRequests = data.requests;
-        const newWeight = hourly.requests;
-        const existingRequests = totalRequests - newWeight;
-        if (data.avgLatency === undefined) {
-          data.avgLatency = hourly.avgLatency;
-        } else {
-          data.avgLatency = Math.round(
-            (data.avgLatency * existingRequests + hourly.avgLatency * newWeight) / totalRequests
-          );
+    // Aggregate single day data
+    const aggregated = aggregate({ startDate: dateStr, endDate: dateStr });
+
+    // Accumulate from daily summaries, applying provider/model filters
+    for (const daily of aggregated.byDate || []) {
+      // Apply provider filter
+      if (provider && daily.provider !== provider) continue;
+      // Apply model filter
+      if (model) {
+        const dailyModelStr = Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model);
+        const filterModelStr = Array.isArray(model) ? model.join(',') : String(model);
+        if (dailyModelStr !== filterModelStr) continue;
+      }
+
+      for (const hourly of daily.hourlyBreakdown) {
+        const data = hourlyData[hourly.hour];
+        data.requests += hourly.requests;
+        data.inputTokens += hourly.inputTokens;
+        data.outputTokens += hourly.outputTokens;
+        data.cacheCreationTokens += hourly.cacheCreationTokens;
+        data.cacheReadTokens += hourly.cacheReadTokens;
+
+        // Calculate performance metrics
+        if (hourly.avgLatency !== undefined && hourly.avgLatency > 0) {
+          // Accumulate total output duration (avgLatency * requests)
+          data.totalOutputDuration += hourly.avgLatency * hourly.requests;
+          // Recalculate weighted average latency
+          const totalRequests = data.requests;
+          const newWeight = hourly.requests;
+          const existingRequests = totalRequests - newWeight;
+          if (data.avgLatency === undefined) {
+            data.avgLatency = hourly.avgLatency;
+          } else {
+            data.avgLatency = Math.round(
+              (data.avgLatency * existingRequests + hourly.avgLatency * newWeight) / totalRequests
+            );
+          }
         }
       }
     }
+
+    currentDate.setDate(currentDate.getDate() + 1);
   }
 
   // Calculate average speed as total output tokens / total output duration
@@ -588,45 +650,57 @@ export function getPerformanceMetrics(
   provider?: string,
   model?: string
 ): PerformanceMetrics[] {
-  const aggregated = aggregate({ startDate, endDate, provider, model });
   const metrics: PerformanceMetrics[] = [];
 
-  if (groupBy === 'day') {
-    // Group by date
-    for (const daily of aggregated.byDate || []) {
-      metrics.push({
-        timestamp: daily.date,
-        date: daily.date,
-        provider: daily.provider,
-        model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
-        requests: daily.totalRequests,
-        inputTokens: daily.totalInputTokens,
-        outputTokens: daily.totalOutputTokens,
-        avgLatency: daily.avgLatency,
-        avgTimeToFirstToken: daily.avgTimeToFirstToken,
-        avgSpeed: daily.avgSpeed,
-      });
-    }
-  } else {
-    // Group by hour within each date
-    for (const daily of aggregated.byDate || []) {
-      for (const hourly of daily.hourlyBreakdown) {
-        if (hourly.requests > 0) {
-          const timestamp = `${daily.date}T${hourly.hour.toString().padStart(2, '0')}:00:00`;
-          metrics.push({
-            timestamp,
-            date: daily.date,
-            provider: daily.provider,
-            model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
-            requests: hourly.requests,
-            inputTokens: hourly.inputTokens,
-            outputTokens: hourly.outputTokens,
-            avgLatency: hourly.avgLatency,
-            avgSpeed: hourly.avgSpeed,
-          });
+  // Iterate through each day in the range
+  const currentDate = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split('T')[0];
+
+    // Aggregate single day data
+    const aggregated = aggregate({ startDate: dateStr, endDate: dateStr, provider, model });
+
+    if (groupBy === 'day') {
+      // Group by date
+      for (const daily of aggregated.byDate || []) {
+        metrics.push({
+          timestamp: daily.date,
+          date: daily.date,
+          provider: daily.provider,
+          model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
+          requests: daily.totalRequests,
+          inputTokens: daily.totalInputTokens,
+          outputTokens: daily.totalOutputTokens,
+          avgLatency: daily.avgLatency,
+          avgTimeToFirstToken: daily.avgTimeToFirstToken,
+          avgSpeed: daily.avgSpeed,
+        });
+      }
+    } else {
+      // Group by hour within each date
+      for (const daily of aggregated.byDate || []) {
+        for (const hourly of daily.hourlyBreakdown) {
+          if (hourly.requests > 0) {
+            const timestamp = `${daily.date}T${hourly.hour.toString().padStart(2, '0')}:00:00`;
+            metrics.push({
+              timestamp,
+              date: daily.date,
+              provider: daily.provider,
+              model: Array.isArray(daily.model) ? daily.model.join(',') : String(daily.model),
+              requests: hourly.requests,
+              inputTokens: hourly.inputTokens,
+              outputTokens: hourly.outputTokens,
+              avgLatency: hourly.avgLatency,
+              avgSpeed: hourly.avgSpeed,
+            });
+          }
         }
       }
     }
+
+    currentDate.setDate(currentDate.getDate() + 1);
   }
 
   return metrics.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
