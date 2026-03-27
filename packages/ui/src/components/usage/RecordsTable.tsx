@@ -113,7 +113,6 @@ export function RecordsTable({
               <th className="p-2 text-right">{t('usage.ttft')}</th>
               <th className="p-2 text-right">{t('usage.output_duration')}</th>
               <th className="p-2 text-right">{t('usage.speed')}</th>
-              <th className="p-2 text-right">{t('usage.reasoning')}</th>
               <th className="p-2 text-center">{t('usage.status')}</th>
             </tr>
           </thead>
@@ -167,7 +166,7 @@ export function RecordsTable({
                 {/* Expanded row with error message */}
                 {expandedRow === record.id && record.errorMessage && (
                   <tr className="bg-red-50 dark:bg-red-950/20">
-                    <td colSpan={12} className="p-3">
+                    <td colSpan={11} className="p-3">
                       <div className="text-xs text-red-600 dark:text-red-400">
                         <span className="font-semibold">{t('usage.error')}:</span>
                         <pre className="mt-1 whitespace-pre-wrap break-all">{record.errorMessage}</pre>
