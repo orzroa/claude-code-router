@@ -384,7 +384,7 @@
     "error": "Error",
     "no_performance_data": "No performance data available for selected date range",
     "speed_description": "Output tokens per second",
-    "latency_description": "Average request latency in milliseconds",
+    "latency_description": "Average request latency (converts to seconds when >1s)",
     "metric": "Metric",
     "total": "Total",
     "models": "models",

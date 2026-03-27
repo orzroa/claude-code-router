@@ -110,6 +110,11 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
     }
   };
 
+  const formatTooltipValue = (value: number) => {
+    if (metric === 'speed') return `${formatValue(value)} tokens/s`;
+    return value >= 1000 ? `${formatValue(value)}s` : `${formatValue(value)}ms`;
+  };
+
   const formatYAxis = (value: number) => {
     if (metric === 'speed') {
       return value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value.toString();
@@ -183,7 +188,7 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
               }}
               labelStyle={{ color: '#374151' }}
               formatter={(value: any, name: any) => [
-                `${formatValue(Number(value) || 0)} ${metric === 'speed' ? 'tokens/s' : ''}`,
+                formatTooltipValue(Number(value) || 0),
                 name,
               ]}
             />

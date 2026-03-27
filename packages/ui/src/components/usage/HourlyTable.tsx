@@ -446,11 +446,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                             return (
                               <tr key={`${modelRowId}-h-${hour}`} className="border-b bg-muted/5">
                                 <td className="p-2 text-muted-foreground text-xs pl-16">{formatHour(hour)}</td>
+                                <td className="p-2 text-right">{stats.requests.toLocaleString()}</td>
                                 <td className="p-2 text-right font-mono">{formatTokens(stats.inputTokens)}</td>
                                 <td className="p-2 text-right font-mono text-xs">{formatCacheHit(stats.cacheReadTokens)}</td>
+                                <td className="p-2 text-right">
+                                  <span className={(stats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                                    {(stats.reasoningTokens ?? 0) > 0 ? formatTokens(stats.reasoningTokens) : '-'}
+                                  </span>
+                                </td>
                                 <td className="p-2 text-right font-mono">{formatTokens(stats.outputTokens)}</td>
                                 <td className="p-2 text-right font-mono">{formatTotalTokens(stats.inputTokens, stats.outputTokens)}</td>
-                                <td className="p-2 text-right">{stats.requests.toLocaleString()}</td>
                                 <td className="p-2 text-right">
                                   <span className={hourAvgLatency && hourAvgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(hourAvgLatency)}</span>
                                 </td>

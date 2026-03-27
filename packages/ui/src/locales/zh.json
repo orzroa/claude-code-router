@@ -383,7 +383,7 @@
     "error": "错误",
     "no_performance_data": "选定日期范围内暂无性能数据",
     "speed_description": "每秒输出 Token 数",
-    "latency_description": "平均请求延迟（毫秒）",
+    "latency_description": "平均请求延迟（>1s 时自动转换为秒）",
     "metric": "指标",
     "total": "总计",
     "models": "个模型",
