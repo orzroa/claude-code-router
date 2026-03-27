@@ -39,7 +39,7 @@ function createPerformanceAccumulator(): PerformanceAccumulator {
 }
 
 function addRecordPerformance(acc: PerformanceAccumulator, record: UsageRecord): void {
-  const outputDuration = (record.duration || 0) - (record.timeToFirstToken || 0);
+  const outputDuration = Math.max(0, (record.duration || 0) - (record.timeToFirstToken || 0));
   if (outputDuration > 0) {
     acc.durationSum += outputDuration;
     acc.durationCount++;

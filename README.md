@@ -28,6 +28,7 @@
 - **CLI Model Management**: Manage models and providers directly from the terminal with `ccr model`.
 - **GitHub Actions Integration**: Trigger Claude Code tasks in your GitHub workflows.
 - **Plugin System**: Extend functionality with custom transformers.
+- **Usage Tracking**: Monitor token consumption, costs, latency, and cache efficiency with detailed statistics and performance metrics.
 
 ## 🚀 Getting Started
 
@@ -257,7 +258,7 @@ This command provides an interactive interface to:
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
-### 6. Presets Management
+### 8. Presets Management
 
 Presets allow you to save, share, and reuse configurations easily. You can export your current configuration as a preset and install presets from files or URLs.
 
@@ -295,7 +296,36 @@ ccr preset delete my-preset
 │   └── manifest.json    # Contains configuration and metadata
 ```
 
-### 7. Activate Command (Environment Variables Setup)
+### 7. Usage Tracking
+
+Claude Code Router includes comprehensive usage tracking features to monitor your token consumption, costs, and performance metrics:
+
+- **Token Usage Statistics**: Track input, output, cache, and reasoning tokens by provider and model
+- **Performance Metrics**: Monitor latency, time-to-first-token, and generation speed
+- **Cost Analysis**: Analyze spending patterns across providers and models
+- **Interactive Dashboard**: Web UI at `/usage` for visualizing trends and filtering data
+- **CLI Commands**: Quick statistics via `ccr usage` in terminal
+- **Export & Cleanup**: Export data as CSV/JSON and manage retention
+
+```shell
+# View today's usage
+ccr usage
+
+# View specific date range
+ccr usage --start 2025-03-01 --end 2025-03-31
+
+# Export to CSV
+ccr usage export --format csv
+
+# Clean up old data
+ccr usage cleanup --retention 30
+```
+
+Access the web dashboard at `http://localhost:3456/ui/usage` for detailed charts, tables, and filtering options.
+
+For more details, see the [Usage API Documentation](docs/docs/server/api/usage-api.md) and [CLI Usage Command](docs/docs/cli/commands/usage.md).
+
+### 9. Activate Command (Environment Variables Setup)
 
 The `activate` command allows you to set up environment variables globally in your shell, enabling you to use the `claude` command directly or integrate Claude Code Router with applications built using the Agent SDK.
 
