@@ -58,6 +58,11 @@ export function append(record: Omit<UsageRecord, 'id'>): UsageRecord {
   const filePath = getDailyFilePath(record.date);
   const line = JSON.stringify(fullRecord) + '\n';
 
+  // Ensure file exists before locking (proper-lockfile requires existing file)
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, '', 'utf-8');
+  }
+
   // Use file locking to prevent concurrent write corruption
   const release = lockfile.lockSync(filePath, { stale: 5000 });
   try {
@@ -82,6 +87,14 @@ export async function appendAsync(record: Omit<UsageRecord, 'id'>): Promise<Usag
 
   const filePath = getDailyFilePath(record.date);
   const line = JSON.stringify(fullRecord) + '\n';
+
+  // Ensure file exists before locking (proper-lockfile requires existing file)
+  try {
+    await fs.promises.access(filePath);
+  } catch {
+    // File doesn't exist, create it
+    await fs.promises.writeFile(filePath, '', 'utf-8');
+  }
 
   // Use file locking to prevent concurrent write corruption
   const release = await lockfile.lock(filePath, { stale: 5000 });
