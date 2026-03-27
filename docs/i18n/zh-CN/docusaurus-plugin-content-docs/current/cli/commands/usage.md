@@ -134,14 +134,32 @@ ccr usage cleanup --dry-run         # 预览模式
 
 - **格式**：JSON Lines（每行一个 JSON 对象）
 - **轮换**：每月创建新文件
-- **保留期**：通过 `USAGE_RETENTION_DAYS` 环境变量配置（默认：90 天）
+- **保留期**：通过插件选项配置（默认：90 天）
 
-## 环境变量
+## 插件配置
 
-| 变量 | 默认值 | 描述 |
-|------|--------|------|
-| `USAGE_TRACKING_ENABLED` | `true` | 启用/禁用量追踪 |
-| `USAGE_RETENTION_DAYS` | `90` | 用量记录保留天数 |
+用量跟踪由 `usage-tracking` 插件提供。在 `config.json` 中配置：
+
+```json
+{
+  "plugins": [
+    {
+      "name": "usage-tracking",
+      "enabled": true,
+      "options": {
+        "retentionDays": 90
+      }
+    }
+  ]
+}
+```
+
+| 选项 | 默认值 | 说明 |
+|----------|---------|-------------|
+| `enabled` | `true` | 启用/禁用量跟踪 |
+| `options.retentionDays` | `90` | 用量记录保留天数 |
+
+禁用后，不收集任何用量数据，所有 `/api/usage/*` 端点返回 404。
 
 ## Web UI
 

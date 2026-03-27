@@ -147,14 +147,32 @@ Usage data is stored in:
 
 - **Format**: JSON Lines (one JSON object per line)
 - **Rotation**: New file created each month
-- **Retention**: Configurable via `USAGE_RETENTION_DAYS` environment variable (default: 90 days)
+- **Retention**: Configurable via plugin options (default: 90 days)
 
-## Environment Variables
+## Plugin Configuration
 
-| Variable | Default | Description |
+Usage tracking is provided by the `usage-tracking` plugin. Configure it in your `config.json`:
+
+```json
+{
+  "plugins": [
+    {
+      "name": "usage-tracking",
+      "enabled": true,
+      "options": {
+        "retentionDays": 90
+      }
+    }
+  ]
+}
+```
+
+| Option | Default | Description |
 |----------|---------|-------------|
-| `USAGE_TRACKING_ENABLED` | `true` | Enable/disable usage tracking |
-| `USAGE_RETENTION_DAYS` | `90` | Days to keep usage records |
+| `enabled` | `true` | Enable/disable usage tracking |
+| `options.retentionDays` | `90` | Days to keep usage records |
+
+When disabled, no usage data is collected and all `/api/usage/*` endpoints return 404.
 
 ## Web UI
 

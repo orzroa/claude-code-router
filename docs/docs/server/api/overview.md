@@ -54,6 +54,8 @@ curl -H "x-api-key: your-api-key" http://localhost:3456/api/config
 | `/api/usage` | GET | Query usage records |
 | `/api/usage/summary` | GET | Get aggregated statistics |
 | `/api/usage/daily` | GET | Get daily totals |
+| `/api/usage/hourly` | GET | Get hourly aggregation |
+| `/api/usage/performance` | GET | Get performance metrics time series |
 | `/api/usage/filters` | GET | Get available filters |
 | `/api/usage/export` | GET | Export usage data |
 | `/api/usage/cleanup` | DELETE | Clean up old data |

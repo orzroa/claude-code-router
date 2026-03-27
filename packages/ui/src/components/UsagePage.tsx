@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import { Calendar, Download, Trash2, RefreshCw, TrendingUp, Zap, Clock, AlertCircle, Layers } from 'lucide-react';
+import { Calendar, Download, Trash2, RefreshCw, TrendingUp, Zap, Clock, AlertCircle, Layers, Timer } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -176,6 +176,10 @@ function formatBytes(bytes: number): string {
 export function UsagePage() {
   const { t } = useTranslation();
 
+  // Plugin status state
+  const [pluginEnabled, setPluginEnabled] = useState<boolean>(true);
+  const [pluginChecked, setPluginChecked] = useState<boolean>(false);
+
   // State
   const [startDate, setStartDate] = useState<string>('');
   const [provider, setProvider] = useState<string>('');
@@ -194,6 +198,10 @@ export function UsagePage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  // Auto-refresh state
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(0); // 0 = off
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Cleanup dialog state
   const [isCleanupDialogOpen, setIsCleanupDialogOpen] = useState(false);
   const [cleanupRetentionDays, setCleanupRetentionDays] = useState(90);
@@ -202,8 +210,23 @@ export function UsagePage() {
 
   // Fetch filters and date history on mount
   useEffect(() => {
-    const fetchInitialData = async () => {
+    const checkPluginAndFetchData = async () => {
       try {
+        // Check plugin status first
+        const status = await api.getPluginsStatus();
+        const usagePlugin = status.plugins.find(p => p.name === 'usage-tracking');
+        // If plugin is not found in the list, it means it's disabled
+        const isEnabled = usagePlugin ? usagePlugin.enabled : false;
+
+        setPluginEnabled(isEnabled);
+        setPluginChecked(true);
+
+        if (!isEnabled) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch initial data if plugin is enabled
         const [filtersData, dateRangeData] = await Promise.all([
           api.getUsageFilters(),
           api.getUsageDaily({ startDate: '2000-01-01', endDate: '2099-12-31' }),
@@ -227,11 +250,14 @@ export function UsagePage() {
         setDateHistory(history);
         setStartDate(today);
       } catch (error) {
-        console.error('Failed to fetch initial data:', error);
+        console.error('Failed to check plugin or fetch initial data:', error);
+        // On error, assume plugin is enabled but show error
+        setPluginEnabled(true);
+        setPluginChecked(true);
       }
     };
 
-    fetchInitialData();
+    checkPluginAndFetchData();
   }, []);
 
   // Fetch usage data
@@ -263,6 +289,18 @@ export function UsagePage() {
   useEffect(() => {
     fetchUsage();
   }, [fetchUsage]);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (autoRefreshInterval <= 0) return;
+
+    const intervalId = setInterval(() => {
+      setIsRefreshing(true);
+      fetchUsage().finally(() => setIsRefreshing(false));
+    }, autoRefreshInterval * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [autoRefreshInterval, fetchUsage]);
 
   // Export handler
   const handleExport = async (format: 'json' | 'csv') => {
@@ -371,6 +409,45 @@ export function UsagePage() {
     return filters?.models || [];
   }, [filters, provider, summary]);
 
+  // Show loading state while checking plugin
+  if (!pluginChecked) {
+    return (
+      <div className="h-screen bg-gray-50 font-sans flex items-center justify-center">
+        <div className="text-gray-500">{t('usage.loading')}</div>
+      </div>
+    );
+  }
+
+  // Show disabled state if plugin is not enabled
+  if (!pluginEnabled) {
+    return (
+      <div className="h-screen bg-gray-50 font-sans flex flex-col items-center justify-center space-y-6 p-8">
+        <AlertCircle className="h-16 w-16 text-muted-foreground" />
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-semibold">{t('usage.disabled_title')}</h2>
+          <p className="text-muted-foreground max-w-md">
+            {t('usage.disabled_description')}
+          </p>
+        </div>
+        <div className="bg-muted p-6 rounded-lg max-w-lg">
+          <p className="text-sm font-medium mb-2">{t('usage.config_example')}</p>
+          <pre className="text-xs bg-background p-4 rounded overflow-x-auto">
+{`{
+  "Plugins": [{
+    "name": "usage-tracking",
+    "enabled": true,
+    "options": { "retentionDays": 90 }
+  }]
+}`}
+          </pre>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t('usage.restart_hint')}
+        </p>
+      </div>
+    );
+  }
+
   if (isLoading && !summary) {
     return (
       <div className="h-screen bg-gray-50 font-sans flex items-center justify-center">
@@ -399,9 +476,28 @@ export function UsagePage() {
         <header className="flex h-16 items-center justify-between border-b bg-white px-6">
           <h1 className="text-xl font-semibold text-gray-800">{t('usage.title')}</h1>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={fetchUsage}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {t('usage.refresh')}
+            {/* Auto-refresh selector */}
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={autoRefreshInterval.toString()}
+                onValueChange={(v) => setAutoRefreshInterval(parseInt(v))}
+              >
+                <SelectTrigger className="w-28">
+                  <SelectValue placeholder={t('usage.auto_refresh')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">{t('usage.auto_refresh_off')}</SelectItem>
+                  <SelectItem value="5">{t('usage.auto_refresh_5s')}</SelectItem>
+                  <SelectItem value="10">{t('usage.auto_refresh_10s')}</SelectItem>
+                  <SelectItem value="30">{t('usage.auto_refresh_30s')}</SelectItem>
+                  <SelectItem value="60">{t('usage.auto_refresh_1m')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => { setIsRefreshing(true); fetchUsage().finally(() => setIsRefreshing(false)); }} disabled={isRefreshing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? t('usage.refreshing') : t('usage.refresh')}
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>
               <Download className="mr-2 h-4 w-4" />

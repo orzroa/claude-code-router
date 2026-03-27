@@ -1,13 +1,13 @@
-import { existsSync, appendFileSync } from "fs";
+import { existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { initConfig, initDir } from "./utils";
 import { createServer } from "./server";
 import { apiKeyAuth } from "./middleware/auth";
-import { CONFIG_FILE, HOME_DIR, listPresets, appendAsync, type UsageRecord } from "@CCR/shared";
+import { CONFIG_FILE, HOME_DIR, listPresets } from "@CCR/shared";
 import { createStream } from 'rotating-file-stream';
-import { sessionUsageCache, getTokenSpeedStats } from "@musistudio/llms";
+import { sessionUsageCache } from "@musistudio/llms";
 import { SSEParserTransform } from "./utils/SSEParser.transform";
 import { SSESerializerTransform } from "./utils/SSESerializer.transform";
 import { rewriteStream } from "./utils/rewriteStream";
@@ -15,95 +15,9 @@ import JSON5 from "json5";
 import { IAgent, ITool } from "./agents/type";
 import agentsManager from "./agents";
 import { EventEmitter } from "node:events";
-import { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+import { pluginManager, tokenSpeedPlugin, usageTrackingPlugin } from "@musistudio/llms";
 
 const event = new EventEmitter()
-
-// Debug file
-const DEBUG_FILE = '/tmp/ccr-persist-debug.txt';
-function debugLog(msg: string) {
-  appendFileSync(DEBUG_FILE, `${new Date().toISOString()} ${msg}\n`);
-}
-
-// Check if usage tracking is enabled
-const USAGE_TRACKING_ENABLED = process.env.USAGE_TRACKING_ENABLED !== 'false';
-
-/**
- * Persist usage record to storage
- */
-async function persistUsage(params: {
-  req: any;
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-    reasoning_tokens?: number;
-  };
-  isStreaming: boolean;
-  success: boolean;
-  errorMessage?: string;
-}): Promise<void> {
-  if (!USAGE_TRACKING_ENABLED) { debugLog('USAGE_TRACKING_ENABLED=false, skip'); return; }
-
-  const { req, usage, isStreaming, success, errorMessage } = params;
-  if (!usage) { debugLog(`persistUsage: usage is ${usage}, skip. sessionId=${req.sessionId} isStreaming=${isStreaming}`); return; }
-
-  debugLog(`persistUsage called: sessionId=${req.sessionId} isStreaming=${isStreaming} usage=${JSON.stringify(usage)}`);
-  try {
-    const now = new Date();
-
-    // Get performance metrics from token speed plugin
-    let duration: number | undefined;
-    let timeToFirstToken: number | undefined;
-
-    try {
-      const requestId = req.id || `req-${Date.now()}`;
-      const tokenStats = getTokenSpeedStats(requestId);
-      if (tokenStats?.current) {
-        // Calculate duration from startTime and lastTokenTime
-        duration = Math.round(tokenStats.current.lastTokenTime - tokenStats.current.startTime);
-        timeToFirstToken = tokenStats.current.timeToFirstToken;
-        debugLog(`Got performance metrics for request ${requestId}: duration=${duration}ms, ttft=${timeToFirstToken}ms`);
-      } else {
-        debugLog(`No token stats found for request ${requestId}`);
-      }
-    } catch (statsError) {
-      debugLog(`Failed to get token speed stats: ${statsError}`);
-    }
-
-    // Normalize model field to string (handle both array and string formats)
-    let normalizedModel: string;
-    if (Array.isArray(req.model)) {
-      normalizedModel = req.model.join(', ');
-    } else {
-      normalizedModel = req.model || 'unknown';
-    }
-
-    const record: Omit<UsageRecord, 'id'> = {
-      timestamp: now.toISOString(),
-      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-      sessionId: req.sessionId,
-      requestId: req.id || `req-${Date.now()}`,
-      provider: req.provider || 'unknown',
-      model: normalizedModel,
-      inputTokens: usage.input_tokens || 0,
-      outputTokens: usage.output_tokens || 0,
-      cacheCreationInputTokens: usage.cache_creation_input_tokens,
-      cacheReadInputTokens: usage.cache_read_input_tokens,
-      reasoningTokens: usage.reasoning_tokens,
-      stream: isStreaming,
-      success,
-      errorMessage,
-      duration,
-      timeToFirstToken,
-    };
-
-    await appendAsync(record);
-  } catch (err) {
-    console.error('Failed to persist usage:', err);
-  }
-}
 
 async function initializeClaudeConfig() {
   const homeDir = homedir();
@@ -148,28 +62,45 @@ async function registerPluginsFromConfig(serverInstance: any, config: any): Prom
   // Get plugins configuration from config file
   const pluginsConfig: PluginConfig[] = config.plugins || config.Plugins || [];
 
+  // Check if usage-tracking is explicitly configured
+  const usageTrackingConfig = pluginsConfig.find(p => p.name === 'usage-tracking');
+
+  // Register usage-tracking plugin (enabled by default unless explicitly disabled)
+  if (!usageTrackingConfig || usageTrackingConfig.enabled !== false) {
+    pluginManager.registerPlugin(usageTrackingPlugin, {
+      enabled: true,
+      retentionDays: 90,
+      ...usageTrackingConfig?.options
+    });
+  }
+
+  // Register other plugins from config
   for (const pluginConfig of pluginsConfig) {
-      const { name, enabled = false, options = {} } = pluginConfig;
+    const { name, enabled = false, options = {} } = pluginConfig;
 
-      switch (name) {
-        case 'token-speed':
-          pluginManager.registerPlugin(tokenSpeedPlugin, {
-            enabled,
-            outputHandlers: [
-              {
-                type: 'temp-file',
-                enabled: true
-              }
-            ],
-            ...options
-          });
-          break;
+    // Skip usage-tracking as it's already handled above
+    if (name === 'usage-tracking') continue;
 
-        default:
-          console.warn(`Unknown plugin: ${name}`);
-          break;
-      }
+    switch (name) {
+      case 'token-speed':
+        pluginManager.registerPlugin(tokenSpeedPlugin, {
+          enabled,
+          outputHandlers: [
+            {
+              type: 'temp-file',
+              enabled: true
+            }
+          ],
+          ...options
+        });
+        break;
+
+      default:
+        console.warn(`Unknown plugin: ${name}`);
+        break;
     }
+  }
+
   // Enable all registered plugins
   await pluginManager.enablePlugins(serverInstance);
 }
@@ -330,8 +261,10 @@ async function getServer(options: RunOptions = {}) {
   serverInstance.addHook("onError", async (request: any, reply: any, error: any) => {
     event.emit('onError', request, reply, error);
   })
+
+  // Agent stream handling
   serverInstance.addHook("onSend", (req: any, reply: any, payload: any, done: any) => {
-    if (req.sessionId && req.pathname.endsWith("/v1/messages")) {
+    if (req.sessionId && req.pathname?.endsWith("/v1/messages")) {
       if (payload instanceof ReadableStream) {
         if (req.agents) {
           const abortController = new AbortController();
@@ -459,77 +392,15 @@ async function getServer(options: RunOptions = {}) {
             }
           }).pipeThrough(new SSESerializerTransform()))
         }
+      }
 
-        const [originalStream, clonedStream] = payload.tee();
-        debugLog(`streaming path: cloning stream, sessionId=${req.sessionId}`);
-        const read = async (stream: ReadableStream) => {
-          const reader = stream.getReader();
-          let currentEvent = '';
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const dataStr = new TextDecoder().decode(value);
-              const lines = dataStr.split('\n');
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  currentEvent = line.slice(6).trim();
-                } else if (line.startsWith('data:') && currentEvent === 'message_delta') {
-                  const jsonStr = line.slice(5).trim();
-                  if (jsonStr === '[DONE]') continue;
-                  try {
-                    const message = JSON.parse(jsonStr);
-                    debugLog(`message_delta: ${jsonStr.slice(0, 100)}`);
-                    if (message.usage) {
-                      sessionUsageCache.put(req.sessionId, message.usage);
-                      debugLog(`usage found: ${JSON.stringify(message.usage)}`);
-                      persistUsage({
-                        req,
-                        usage: message.usage,
-                        isStreaming: true,
-                        success: true,
-                      }).catch(err => console.error('Failed to persist streaming usage:', err));
-                    } else {
-                      debugLog(`no usage in message_delta`);
-                    }
-                  } catch (e) {
-                    debugLog(`JSON parse error: ${e}`);
-                  }
-                }
-              }
-            }
-          } catch (readError: any) {
-            debugLog(`read error: ${readError.name}:${readError.message}`);
-            if (readError.name === 'AbortError' || readError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-              console.error('Background read stream closed prematurely');
-            } else {
-              console.error('Error in background stream reading:', readError);
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        }
-        read(clonedStream);
-        return done(null, originalStream)
+      // Handle non-streaming response for session cache
+      if (payload && typeof payload === 'object' && payload.usage) {
+        sessionUsageCache.put(req.sessionId, payload.usage);
       }
-      sessionUsageCache.put(req.sessionId, payload.usage);
-      debugLog(`non-streaming: sessionId=${req.sessionId} payload.usage=${JSON.stringify(payload.usage)}`);
-      // Persist usage for non-streaming response
-      if (payload.usage) {
-        persistUsage({
-          req,
-          usage: payload.usage,
-          isStreaming: false,
-          success: !payload.error,
-          errorMessage: payload.error?.message,
-        }).catch(err => console.error('Failed to persist non-streaming usage:', err));
-      }
-      if (typeof payload ==='object') {
-        if (payload.error) {
-          return done(payload.error, null)
-        } else {
-          return done(payload, null)
-        }
+
+      if (typeof payload === 'object' && payload.error) {
+        return done(payload.error, null)
       }
     }
     if (typeof payload ==='object' && payload.error) {
@@ -537,9 +408,22 @@ async function getServer(options: RunOptions = {}) {
     }
     done(null, payload)
   });
+
   serverInstance.addHook("onSend", async (req: any, reply: any, payload: any) => {
     event.emit('onSend', req, reply, payload);
     return payload;
+  });
+
+  // Plugin status API endpoint
+  serverInstance.app.get("/api/plugins/status", async () => {
+    const plugins = pluginManager.getPlugins();
+    return {
+      plugins: plugins.map(p => ({
+        name: p.name,
+        enabled: p.enabled,
+        hasOptions: !!p.options
+      }))
+    };
   });
 
   // Add global error handlers to prevent the service from crashing
@@ -570,7 +454,7 @@ export { getServer };
 export type { RunOptions };
 export type { IAgent, ITool } from "./agents/type";
 export { initDir, initConfig, readConfigFile, writeConfigFile, backupConfigFile } from "./utils";
-export { pluginManager, tokenSpeedPlugin } from "@musistudio/llms";
+export { pluginManager, tokenSpeedPlugin, usageTrackingPlugin } from "@musistudio/llms";
 
 // Start service if this file is run directly
 if (require.main === module) {

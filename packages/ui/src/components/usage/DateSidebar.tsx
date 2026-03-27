@@ -37,15 +37,15 @@ export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: Da
     if (dateStr === todayStr) return t('usage.today');
     if (dateStr === yesterdayStr) return t('usage.yesterday');
 
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
+    return date.toLocaleDateString('zh-CN', {
+      month: 'long',
       day: 'numeric',
     });
   };
 
   const formatDayOfWeek = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, { weekday: 'short' });
+    return date.toLocaleDateString('zh-CN', { weekday: 'short' });
   };
 
   return (

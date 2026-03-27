@@ -303,6 +303,13 @@
     "title": "Token 用量统计",
     "loading": "加载数据中...",
     "refresh": "刷新",
+    "auto_refresh": "自动刷新",
+    "auto_refresh_off": "关闭",
+    "auto_refresh_5s": "5秒",
+    "auto_refresh_10s": "10秒",
+    "auto_refresh_30s": "30秒",
+    "auto_refresh_1m": "1分钟",
+    "refreshing": "刷新中...",
     "filters": "筛选条件",
     "start_date": "开始日期",
     "end_date": "结束日期",
@@ -381,6 +388,10 @@
     "total": "总计",
     "models": "个模型",
     "cache_creation": "缓存创建",
-    "reasoning": "推理"
+    "reasoning": "推理",
+    "disabled_title": "用量统计已禁用",
+    "disabled_description": "启用 usage-tracking 插件以查看详细的 Token 用量统计。",
+    "config_example": "添加到您的 config.json：",
+    "restart_hint": "更新配置后请重启服务"
   }
 }

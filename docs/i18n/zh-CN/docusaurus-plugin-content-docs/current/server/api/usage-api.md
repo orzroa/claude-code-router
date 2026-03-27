@@ -1,20 +1,20 @@
 ---
-title: Usage API
+title: 用量 API
 ---
 
-# Usage API
+# 用量 API
 
-The Usage API provides endpoints to query, export, and manage token usage statistics.
+用量 API 提供端点用于查询、导出和管理 Token 使用量统计数据。
 
-:::info Plugin Required
+:::info 需要插件
 
-The Usage API is provided by the `usage-tracking` plugin, which is **enabled by default**. If the plugin is disabled, all usage API endpoints will return 404.
+用量 API 由 `usage-tracking` 插件提供，**默认启用**。如果插件被禁用，所有用量 API 端点将返回 404。
 
 :::
 
-## Plugin Configuration
+## 插件配置
 
-The `usage-tracking` plugin is enabled by default. You can configure it in your `config.json`:
+`usage-tracking` 插件默认启用。您可以在 `config.json` 中配置：
 
 ```json
 {
@@ -30,16 +30,16 @@ The `usage-tracking` plugin is enabled by default. You can configure it in your 
 }
 ```
 
-### Configuration Options
+### 配置选项
 
-| Option | Type | Default | Description |
+| 选项 | 类型 | 默认值 | 说明 |
 |--------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable or disable the plugin |
-| `options.retentionDays` | number | `90` | Number of days to keep usage records |
+| `enabled` | boolean | `true` | 启用或禁用插件 |
+| `options.retentionDays` | number | `90` | 保留用量记录的天数 |
 
-### Disabling Usage Tracking
+### 禁用用量跟踪
 
-To disable usage tracking:
+要禁用用量跟踪：
 
 ```json
 {
@@ -52,25 +52,25 @@ To disable usage tracking:
 }
 ```
 
-When disabled:
-- No usage data is collected
-- All `/api/usage/*` endpoints return 404
-- The Usage page in the UI shows a disabled message
+禁用后：
+- 不收集任何用量数据
+- 所有 `/api/usage/*` 端点返回 404
+- UI 中的用量页面显示禁用提示
 
-### Migration from Environment Variables
+### 从环境变量迁移
 
-:::warning Breaking Change
+:::warning 重大变更
 
-The `USAGE_TRACKING_ENABLED` environment variable is no longer supported. Use the plugin configuration instead.
+`USAGE_TRACKING_ENABLED` 环境变量已不再支持。请使用插件配置代替。
 
 :::
 
-**Before (deprecated):**
+**之前（已弃用）：**
 ```bash
 export USAGE_TRACKING_ENABLED=false
 ```
 
-**After:**
+**现在：**
 ```json
 {
   "Plugins": [
@@ -82,15 +82,15 @@ export USAGE_TRACKING_ENABLED=false
 }
 ```
 
-## Plugin Status API
+## 插件状态 API
 
-You can check plugin status via the `/api/plugins/status` endpoint:
+可以通过 `/api/plugins/status` 端点检查插件状态：
 
 ```
 GET /api/plugins/status
 ```
 
-### Response
+### 响应
 
 ```json
 {
@@ -109,39 +109,39 @@ GET /api/plugins/status
 }
 ```
 
-## Endpoints Overview
+## 端点概览
 
-| Endpoint | Method | Description |
+| 端点 | 方法 | 说明 |
 |----------|--------|-------------|
-| `/api/usage` | GET | Query usage records with pagination |
-| `/api/usage/summary` | GET | Get aggregated statistics |
-| `/api/usage/daily` | GET | Get daily totals for trends |
-| `/api/usage/hourly` | GET | Get hourly aggregation for time-of-day analysis |
-| `/api/usage/performance` | GET | Get performance metrics time series |
-| `/api/usage/filters` | GET | Get available providers/models |
-| `/api/usage/export` | GET | Export usage data |
-| `/api/usage/cleanup` | DELETE | Clean up old usage data |
+| `/api/usage` | GET | 分页查询用量记录 |
+| `/api/usage/summary` | GET | 获取聚合统计数据 |
+| `/api/usage/daily` | GET | 获取每日总量趋势 |
+| `/api/usage/hourly` | GET | 获取小时分布用于时段分析 |
+| `/api/usage/performance` | GET | 获取性能指标时间序列 |
+| `/api/usage/filters` | GET | 获取可选的提供商/模型过滤条件 |
+| `/api/usage/export` | GET | 导出用量数据 |
+| `/api/usage/cleanup` | DELETE | 清理旧数据 |
 
-## Query Usage Records
+## 查询用量记录
 
 ```
 GET /api/usage
 ```
 
-Retrieve paginated usage records.
+检索分页的用量记录。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | Start date (YYYY-MM-DD) |
-| `endDate` | string | End date (YYYY-MM-DD) |
-| `provider` | string | Filter by provider name |
-| `model` | string | Filter by model name |
-| `limit` | number | Number of records to return (default: 100) |
-| `offset` | number | Number of records to skip (default: 0) |
+| `startDate` | string | 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | 结束日期 (YYYY-MM-DD) |
+| `provider` | string | 按提供商名称过滤 |
+| `model` | string | 按模型名称过滤 |
+| `limit` | number | 返回记录数量（默认：100） |
+| `offset` | number | 跳过的记录数量（默认：0） |
 
-### Response
+### 响应
 
 ```json
 {
@@ -174,31 +174,31 @@ Retrieve paginated usage records.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage?startDate=2025-03-01&endDate=2025-03-31&limit=50"
 ```
 
-## Get Usage Summary
+## 获取用量摘要
 
 ```
 GET /api/usage/summary
 ```
 
-Get aggregated usage statistics with breakdowns by provider and model.
+获取按提供商和模型细分的聚合用量统计数据。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | Start date (YYYY-MM-DD) |
-| `endDate` | string | End date (YYYY-MM-DD) |
-| `provider` | string | Filter by provider name |
-| `model` | string | Filter by model name |
+| `startDate` | string | 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | 结束日期 (YYYY-MM-DD) |
+| `provider` | string | 按提供商名称过滤 |
+| `model` | string | 按模型名称过滤 |
 
-### Response
+### 响应
 
 ```json
 {
@@ -212,6 +212,10 @@ Get aggregated usage statistics with breakdowns by provider and model.
   "totalCacheCreationTokens": 50000,
   "totalCacheReadTokens": 25000,
   "totalReasoningTokens": 100000,
+  "avgLatency": 1500,
+  "avgTimeToFirstToken": 200,
+  "avgSpeed": 42,
+  "cacheHitRatio": 0.15,
   "byProvider": [
     {
       "provider": "zhipu",
@@ -223,6 +227,8 @@ Get aggregated usage statistics with breakdowns by provider and model.
       "cacheCreationTokens": 30000,
       "cacheReadTokens": 15000,
       "reasoningTokens": 50000,
+      "avgLatency": 1200,
+      "avgSpeed": 45,
       "models": [
         {
           "model": "glm-4.6",
@@ -251,12 +257,16 @@ Get aggregated usage statistics with breakdowns by provider and model.
       "totalRequests": 50,
       "totalInputTokens": 45000,
       "totalOutputTokens": 15000,
+      "avgLatency": 1200,
+      "avgSpeed": 45,
       "hourlyBreakdown": [
         {
           "hour": 0,
           "requests": 5,
           "inputTokens": 5000,
-          "outputTokens": 1500
+          "outputTokens": 1500,
+          "avgLatency": 1000,
+          "avgSpeed": 40
         }
       ]
     }
@@ -264,29 +274,29 @@ Get aggregated usage statistics with breakdowns by provider and model.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/summary?startDate=2025-03-25&endDate=2025-03-25"
 ```
 
-## Get Daily Totals
+## 获取每日总量
 
 ```
 GET /api/usage/daily
 ```
 
-Get daily aggregated totals for trend visualization.
+获取每日聚合总量用于趋势可视化。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | **Required** Start date (YYYY-MM-DD) |
-| `endDate` | string | **Required** End date (YYYY-MM-DD) |
+| `startDate` | string | **必填** 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | **必填** 结束日期 (YYYY-MM-DD) |
 
-### Response
+### 响应
 
 ```json
 {
@@ -309,31 +319,31 @@ Get daily aggregated totals for trend visualization.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/daily?startDate=2025-03-01&endDate=2025-03-31"
 ```
 
-## Get Hourly Aggregation
+## 获取小时分布
 
 ```
 GET /api/usage/hourly
 ```
 
-Get hourly aggregated data for time-of-day analysis, with optional filtering by provider and model.
+获取按小时聚合的数据用于时段分析，支持按提供商和模型过滤。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | **Required** Start date (YYYY-MM-DD) |
-| `endDate` | string | **Required** End date (YYYY-MM-DD) |
-| `provider` | string | Filter by provider name |
-| `model` | string | Filter by model name |
+| `startDate` | string | **必填** 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | **必填** 结束日期 (YYYY-MM-DD) |
+| `provider` | string | 按提供商名称过滤 |
+| `model` | string | 按模型名称过滤 |
 
-### Response
+### 响应
 
 ```json
 {
@@ -352,32 +362,32 @@ Get hourly aggregated data for time-of-day analysis, with optional filtering by 
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/hourly?startDate=2025-03-01&endDate=2025-03-31&provider=zhipu"
 ```
 
-## Get Performance Metrics
+## 获取性能指标
 
 ```
 GET /api/usage/performance
 ```
 
-Get performance metrics time series data for charting, grouped by day or hour.
+获取用于图表展示的性能指标时间序列数据，可按天或小时分组。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | **Required** Start date (YYYY-MM-DD) |
-| `endDate` | string | **Required** End date (YYYY-MM-DD) |
-| `groupBy` | string | Group by `day` or `hour` (default: `day`) |
-| `provider` | string | Filter by provider name |
-| `model` | string | Filter by model name |
+| `startDate` | string | **必填** 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | **必填** 结束日期 (YYYY-MM-DD) |
+| `groupBy` | string | 按 `day` 或 `hour` 分组（默认：`day`） |
+| `provider` | string | 按提供商名称过滤 |
+| `model` | string | 按模型名称过滤 |
 
-### Response
+### 响应
 
 ```json
 {
@@ -398,29 +408,29 @@ Get performance metrics time series data for charting, grouped by day or hour.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/performance?startDate=2025-03-01&endDate=2025-03-31&groupBy=day"
 ```
 
-## Get Available Filters
+## 获取可用过滤器
 
 ```
 GET /api/usage/filters
 ```
 
-Get lists of available providers, models, and date range for filtering.
+获取可用于过滤的提供商列表、模型列表和日期范围。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `startDate` | string | Optional date range start |
-| `endDate` | string | Optional date range end |
+| `startDate` | string | 可选的日期范围开始 |
+| `endDate` | string | 可选的日期范围结束 |
 
-### Response
+### 响应
 
 ```json
 {
@@ -433,69 +443,69 @@ Get lists of available providers, models, and date range for filtering.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/filters"
 ```
 
-## Export Usage Data
+## 导出用量数据
 
 ```
 GET /api/usage/export
 ```
 
-Export usage data as JSON or CSV file.
+将用量数据导出为 JSON 或 CSV 文件。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `format` | string | Export format: `json` or `csv` (default: `json`) |
-| `startDate` | string | Start date (YYYY-MM-DD) |
-| `endDate` | string | End date (YYYY-MM-DD) |
-| `provider` | string | Filter by provider name |
-| `model` | string | Filter by model name |
+| `format` | string | 导出格式：`json` 或 `csv`（默认：`json`） |
+| `startDate` | string | 开始日期 (YYYY-MM-DD) |
+| `endDate` | string | 结束日期 (YYYY-MM-DD) |
+| `provider` | string | 按提供商名称过滤 |
+| `model` | string | 按模型名称过滤 |
 
-### Response
+### 响应
 
-Returns the file content with appropriate headers for download.
+返回文件内容，带有相应的下载头。
 
 - **JSON**: `Content-Type: application/json`
 - **CSV**: `Content-Type: text/csv`
 
-### Example
+### 示例
 
 ```bash
-# Export as JSON
+# 导出为 JSON
 curl -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/export?format=json" \
   -o usage-export.json
 
-# Export as CSV
+# 导出为 CSV
 curl -H "x-api-key: your-api-key" \
-  "http://localhost:3456/api/usage/export?format=csv&startDate=2025-03-01" \
+  "http://localhost:3456/api/usage/export?csv&startDate=2025-03-01" \
   -o usage-export.csv
 ```
 
-## Cleanup Old Data
+## 清理旧数据
 
 ```
 DELETE /api/usage/cleanup
 ```
 
-Delete old usage records to free up disk space.
+删除旧的用量记录以释放磁盘空间。
 
-### Query Parameters
+### 查询参数
 
-| Parameter | Type | Description |
+| 参数 | 类型 | 说明 |
 |-----------|------|-------------|
-| `beforeDate` | string | Delete records before this date |
-| `retentionDays` | number | Keep records for N days (default: 90) |
-| `dryRun` | boolean | Preview without deleting (default: false) |
+| `beforeDate` | string | 删除此日期之前的记录 |
+| `retentionDays` | number | 保留 N 天的记录（默认：90） |
+| `dryRun` | boolean | 预览而不删除（默认：false） |
 
-### Response
+### 响应
 
 ```json
 {
@@ -509,19 +519,19 @@ Delete old usage records to free up disk space.
 }
 ```
 
-### Example
+### 示例
 
 ```bash
-# Preview cleanup (dry run)
+# 预览清理（试运行）
 curl -X DELETE -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/cleanup?dryRun=true&retentionDays=30"
 
-# Actually delete old records
+# 实际删除旧记录
 curl -X DELETE -H "x-api-key: your-api-key" \
   "http://localhost:3456/api/usage/cleanup?retentionDays=90"
 ```
 
-## Data Model
+## 数据模型
 
 ### UsageRecord
 
@@ -530,34 +540,34 @@ interface UsageRecord {
   id: string;                           // UUID
   timestamp: string;                    // ISO 8601
   date: string;                         // YYYY-MM-DD
-  sessionId?: string;                   // Session identifier
-  requestId: string;                    // Request identifier
-  provider: string;                     // Provider name
-  model: string;                        // Model name
+  sessionId?: string;                   // Session 标识符
+  requestId: string;                    // 请求标识符
+  provider: string;                      // 提供商名称
+  model: string;                        // 模型名称
 
-  // Token usage
+  // Token 使用量
   inputTokens: number;
   outputTokens: number;
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
   reasoningTokens?: number;
 
-  // Request metadata
+  // 请求元数据
   stream: boolean;
   success: boolean;
   errorMessage?: string;
-  duration?: number;                    // Request duration in ms
-  timeToFirstToken?: number;            // Time to first token in ms
+  duration?: number;                    // 请求耗时（毫秒）
+  timeToFirstToken?: number;            // 首 token 耗时（毫秒）
 }
 ```
 
-## Error Responses
+## 错误响应
 
-| Status Code | Description |
+| 状态码 | 说明 |
 |-------------|-------------|
-| 400 | Invalid query parameters |
-| 401 | Unauthorized (invalid or missing API key) |
-| 500 | Server error |
+| 400 | 无效的查询参数 |
+| 401 | 未授权（API 密钥无效或缺失） |
+| 500 | 服务器错误 |
 
 ```json
 {

@@ -258,7 +258,7 @@ This command provides an interactive interface to:
 
 The CLI tool validates all inputs and provides helpful prompts to guide you through the configuration process, making it easy to manage complex setups without editing JSON files manually.
 
-### 8. Presets Management
+### 6. Presets Management
 
 Presets allow you to save, share, and reuse configurations easily. You can export your current configuration as a preset and install presets from files or URLs.
 
@@ -325,7 +325,44 @@ Access the web dashboard at `http://localhost:3456/ui/usage` for detailed charts
 
 For more details, see the [Usage API Documentation](docs/docs/server/api/usage-api.md) and [CLI Usage Command](docs/docs/cli/commands/usage.md).
 
-### 9. Activate Command (Environment Variables Setup)
+#### Plugin Configuration
+
+Claude Code Router uses a plugin system to enable/disable optional features. Configure plugins in `config.json`:
+
+```json
+{
+  "plugins": [
+    {
+      "name": "usage-tracking",
+      "enabled": true,
+      "options": {
+        "retentionDays": 90
+      }
+    },
+    {
+      "name": "token-speed",
+      "enabled": false,
+      "options": {}
+    }
+  ]
+}
+```
+
+**Available Plugins:**
+
+| Plugin | Default | Description |
+|--------|---------|-------------|
+| `usage-tracking` | Enabled | Tracks token usage, latency, and performance metrics |
+| `token-speed` | Disabled | Measures streaming token generation speed |
+
+When `usage-tracking` is disabled:
+- No usage data is collected
+- All `/api/usage/*` endpoints return 404
+- The Usage page in the UI shows a disabled message
+
+Restart the server after modifying plugin configuration.
+
+### 8. Activate Command (Environment Variables Setup)
 
 The `activate` command allows you to set up environment variables globally in your shell, enabling you to use the `claude` command directly or integrate Claude Code Router with applications built using the Agent SDK.
 

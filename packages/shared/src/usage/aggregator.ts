@@ -23,8 +23,8 @@ interface PerformanceAccumulator {
   durationCount: number;
   ttftSum: number;
   ttftCount: number;
-  speedSum: number;
-  speedCount: number;
+  outputTokensSum: number;  // Total output tokens
+  outputDurationSum: number;  // Total output duration (ms)
 }
 
 function createPerformanceAccumulator(): PerformanceAccumulator {
@@ -33,8 +33,8 @@ function createPerformanceAccumulator(): PerformanceAccumulator {
     durationCount: 0,
     ttftSum: 0,
     ttftCount: 0,
-    speedSum: 0,
-    speedCount: 0,
+    outputTokensSum: 0,
+    outputDurationSum: 0,
   };
 }
 
@@ -44,12 +44,11 @@ function addRecordPerformance(acc: PerformanceAccumulator, record: UsageRecord):
     acc.durationSum += outputDuration;
     acc.durationCount++;
 
-    // Calculate speed: tokens per second (using output duration = total duration - TTFT)
+    // Accumulate total output tokens and duration for speed calculation
     const outputTokens = record.outputTokens || 0;
     if (outputTokens > 0) {
-      const outputDurationSeconds = outputDuration / 1000;
-      acc.speedSum += outputTokens / outputDurationSeconds;
-      acc.speedCount++;
+      acc.outputTokensSum += outputTokens;
+      acc.outputDurationSum += outputDuration;
     }
   }
 
@@ -78,8 +77,10 @@ function calculatePerformance(acc: PerformanceAccumulator): {
     result.avgTimeToFirstToken = Math.round(acc.ttftSum / acc.ttftCount);
   }
 
-  if (acc.speedCount > 0) {
-    result.avgSpeed = Math.round(acc.speedSum / acc.speedCount);
+  // Calculate average speed as total tokens / total duration
+  if (acc.outputDurationSum > 0 && acc.outputTokensSum > 0) {
+    const outputDurationSeconds = acc.outputDurationSum / 1000;
+    result.avgSpeed = Math.round(acc.outputTokensSum / outputDurationSeconds);
   }
 
   return result;
@@ -511,14 +512,20 @@ export function getDailyTotals(startDate: string, endDate: string): Array<{
 export function getHourlyAggregation(startDate: string, endDate: string, provider?: string, model?: string): HourlyAggregation[] {
   const aggregated = aggregate({ startDate, endDate });
 
+  // Extended type to track total output duration for correct speed calculation
+  type HourlyDataExtended = HourlyAggregation & { totalOutputDuration: number };
+
   // Initialize 24 hours
-  const hourlyData: HourlyAggregation[] = Array.from({ length: 24 }, (_, hour) => ({
+  const hourlyData: HourlyDataExtended[] = Array.from({ length: 24 }, (_, hour) => ({
     hour,
     requests: 0,
     inputTokens: 0,
     outputTokens: 0,
     cacheCreationTokens: 0,
     cacheReadTokens: 0,
+    avgLatency: undefined,
+    avgSpeed: undefined,
+    totalOutputDuration: 0,
   }));
 
   // Accumulate from daily summaries, applying provider/model filters
@@ -541,34 +548,34 @@ export function getHourlyAggregation(startDate: string, endDate: string, provide
       data.cacheReadTokens += hourly.cacheReadTokens;
 
       // Calculate performance metrics
-      if (hourly.avgLatency) {
-        // Weighted average by requests
-        const existingWeight = data.requests - hourly.requests;
+      if (hourly.avgLatency !== undefined && hourly.avgLatency > 0) {
+        // Accumulate total output duration (avgLatency * requests)
+        data.totalOutputDuration += hourly.avgLatency * hourly.requests;
+        // Recalculate weighted average latency
+        const totalRequests = data.requests;
         const newWeight = hourly.requests;
+        const existingRequests = totalRequests - newWeight;
         if (data.avgLatency === undefined) {
           data.avgLatency = hourly.avgLatency;
         } else {
           data.avgLatency = Math.round(
-            (data.avgLatency * existingWeight + hourly.avgLatency * newWeight) / data.requests
-          );
-        }
-      }
-
-      if (hourly.avgSpeed) {
-        const existingWeight = data.requests - hourly.requests;
-        const newWeight = hourly.requests;
-        if (data.avgSpeed === undefined) {
-          data.avgSpeed = hourly.avgSpeed;
-        } else {
-          data.avgSpeed = Math.round(
-            (data.avgSpeed * existingWeight + hourly.avgSpeed * newWeight) / data.requests
+            (data.avgLatency * existingRequests + hourly.avgLatency * newWeight) / totalRequests
           );
         }
       }
     }
   }
 
-  return hourlyData;
+  // Calculate average speed as total output tokens / total output duration
+  for (const data of hourlyData) {
+    if (data.totalOutputDuration > 0 && data.outputTokens > 0) {
+      const outputDurationSeconds = data.totalOutputDuration / 1000;
+      data.avgSpeed = Math.round(data.outputTokens / outputDurationSeconds);
+    }
+  }
+
+  // Remove the temporary field before returning
+  return hourlyData.map(({ totalOutputDuration, ...rest }) => rest);
 }
 
 /**

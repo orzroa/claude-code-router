@@ -503,6 +503,15 @@ class ApiClient {
 
     return this.get(`/usage/performance?${queryParams.toString()}`);
   }
+
+  // ========== Plugin API methods ==========
+
+  // Get plugin status
+  async getPluginsStatus(): Promise<{
+    plugins: Array<{ name: string; enabled: boolean; hasOptions?: boolean }>;
+  }> {
+    return this.get('/plugins/status');
+  }
 }
 
 // Create a default instance of the API client

@@ -196,7 +196,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
       // Handle streaming responses
       if (payload instanceof ReadableStream) {
         // Mark this request as streaming
-        requestStats.set(requestId, {
+        const stats: TokenStats = {
           requestId,
           sessionId,
           startTime,
@@ -205,7 +205,10 @@ export const tokenSpeedPlugin: CCRPlugin = {
           tokensPerSecond: 0,
           tokenTimestamps: [],
           stream: true
-        });
+        };
+        requestStats.set(requestId, stats);
+        // Save to request object for other plugins to access after stream ends
+        (request as any).tokenSpeedStats = stats;
 
         // Tee the stream: one for stats, one for the client
         const [originalStream, statsStream] = payload.tee();
@@ -395,6 +398,9 @@ export const tokenSpeedPlugin: CCRPlugin = {
           stream: false,
           tokenTimestamps: []
         };
+
+        // Save to request object for other plugins to access
+        (request as any).tokenSpeedStats = stats;
 
         await outputStats(stats, reporters, opts.outputOptions, true);
       }

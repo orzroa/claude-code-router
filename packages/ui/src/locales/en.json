@@ -304,6 +304,13 @@
     "title": "Token Usage",
     "loading": "Loading usage data...",
     "refresh": "Refresh",
+    "auto_refresh": "Auto Refresh",
+    "auto_refresh_off": "Off",
+    "auto_refresh_5s": "5s",
+    "auto_refresh_10s": "10s",
+    "auto_refresh_30s": "30s",
+    "auto_refresh_1m": "1m",
+    "refreshing": "Refreshing...",
     "filters": "Filters",
     "start_date": "Start Date",
     "end_date": "End Date",
@@ -382,6 +389,10 @@
     "total": "Total",
     "models": "models",
     "cache_creation": "Cache Creation",
-    "reasoning": "Reasoning"
+    "reasoning": "Reasoning",
+    "disabled_title": "Usage Tracking Disabled",
+    "disabled_description": "Enable the usage-tracking plugin to view detailed token usage statistics.",
+    "config_example": "Add to your config.json:",
+    "restart_hint": "Restart the server after updating configuration"
   }
 }
