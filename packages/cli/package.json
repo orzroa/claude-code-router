@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "description": "CLI for Claude Code Router",
   "bin": {
-    "ccr-dev": "dist/cli.js"
+    "ccr": "dist/cli.js"
   },
   "scripts": {
     "build": "node ../../scripts/build-cli.js",
