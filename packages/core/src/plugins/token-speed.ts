@@ -454,3 +454,69 @@ async function outputStats(
     }
   }
 }
+
+/**
+ * Get token speed statistics for current request and global stats
+ * @param requestId - Optional request ID to find specific request stats
+ */
+export function getTokenSpeedStats(requestId?: string): {
+  current: TokenStats | null;
+  global: {
+    totalRequests: number;
+    totalTokens: number;
+    avgSpeed: number;
+    avgTimeToFirstToken: number;
+  };
+} {
+  // Get specific request stats if requestId provided
+  let current: TokenStats | null = null;
+
+  if (requestId && requestStats.has(requestId)) {
+    current = requestStats.get(requestId)!;
+  } else if (requestStats.size > 0) {
+    // Fallback: get the most recent request stats
+    const entries = Array.from(requestStats.entries());
+    current = entries[entries.length - 1][1];
+  }
+
+  // Calculate global stats
+  let totalTokens = 0;
+  let totalDuration = 0;
+  let totalTimeToFirstToken = 0;
+  let countWithStats = 0;
+
+  for (const stats of requestStats.values()) {
+    totalTokens += stats.tokenCount;
+    const duration = stats.lastTokenTime - stats.startTime;
+    totalDuration += duration;
+    if (stats.timeToFirstToken) {
+      totalTimeToFirstToken += stats.timeToFirstToken;
+      countWithStats++;
+    }
+  }
+
+  const avgSpeed = totalDuration > 0 ? Math.round(totalTokens / (totalDuration / 1000)) : 0;
+  const avgTimeToFirstToken = countWithStats > 0 ? Math.round(totalTimeToFirstToken / countWithStats) : 0;
+
+  return {
+    current,
+    global: {
+      totalRequests: requestStats.size,
+      totalTokens,
+      avgSpeed,
+      avgTimeToFirstToken
+    }
+  };
+}
+
+/**
+ * Get global token speed statistics
+ */
+export function getGlobalTokenSpeedStats(): {
+  totalRequests: number;
+  totalTokens: number;
+  avgSpeed: number;
+  avgTimeToFirstToken: number;
+} {
+  return getTokenSpeedStats().global;
+}

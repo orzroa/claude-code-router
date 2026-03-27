@@ -49,7 +49,7 @@ export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: Da
   };
 
   return (
-    <div className="w-48 flex flex-col border-r bg-muted/30 h-full">
+    <div className="w-36 flex flex-col border-r bg-muted/30 h-full">
       {/* Header */}
       <div className="p-3 border-b">
         <div className="flex items-center gap-2 font-semibold">

@@ -318,7 +318,8 @@
     "new_tokens": "New Tokens",
     "success": "Success",
     "failed": "Failed",
-    "requests": "requests",
+    "requests": "Requests",
+    "request_count": "Requests",
     "tokens": "tokens",
     "by_provider": "By Provider",
     "by_model": "By Model",
@@ -380,6 +381,7 @@
     "metric": "Metric",
     "total": "Total",
     "models": "models",
-    "cache_creation": "Cache Creation"
+    "cache_creation": "Cache Creation",
+    "reasoning": "Reasoning"
   }
 }

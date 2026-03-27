@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Local format tokens function
-function formatTokens(num: number): string {
+function formatTokens(num?: number): string {
+  if (num == null || isNaN(num)) return '-';
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
@@ -19,6 +20,7 @@ interface StatsData {
   cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
+  reasoningTokens?: number;
 }
 
 interface StatsTableProps {
@@ -51,6 +53,7 @@ export function StatsTable({ data, groupBy, loading }: StatsTableProps) {
         existing.outputTokens += item.outputTokens;
         existing.cacheCreationTokens += item.cacheCreationTokens;
         existing.cacheReadTokens += item.cacheReadTokens;
+        existing.reasoningTokens = (existing.reasoningTokens || 0) + (item.reasoningTokens || 0);
 
         // Weighted average for latency and speed
         if (item.avgLatency && existing.avgLatency) {
@@ -111,10 +114,20 @@ export function StatsTable({ data, groupBy, loading }: StatsTableProps) {
     setExpandedProviders(newExpanded);
   };
 
-  const formatCacheHit = (read: number, creation: number) => {
-    const total = read + creation;
-    if (total === 0) return '-';
-    return `${((read / total) * 100).toFixed(1)}%`;
+  const formatCacheHit = (cacheRead: number) => {
+    if (cacheRead === 0) return '-';
+    return formatTokens(cacheRead);
+  };
+
+  const formatNewTokens = (input: number, output: number) => {
+    const total = input + output;
+    return formatTokens(total);
+  };
+
+  // totalTokens = inputTokens + outputTokens (cacheReadInputTokens is tracked separately)
+  const formatTotalTokens = (input: number, output: number) => {
+    const total = input + output;
+    return formatTokens(total);
   };
 
   const formatLatency = (ms?: number) => {
@@ -165,10 +178,12 @@ export function StatsTable({ data, groupBy, loading }: StatsTableProps) {
             <SortHeader key="provider">
               {groupBy === 'provider' ? t('usage.provider') : t('usage.provider_model')}
             </SortHeader>
+            <SortHeader key="requests" align="right">{t('usage.request_count')}</SortHeader>
             <SortHeader key="inputTokens" align="right">{t('usage.input_tokens')}</SortHeader>
             <th className="p-3 text-right">{t('usage.cache_hit')}</th>
+            <th className="p-3 text-right">{t('usage.reasoning')}</th>
             <SortHeader key="outputTokens" align="right">{t('usage.output_tokens')}</SortHeader>
-            <SortHeader key="requests" align="right">{t('usage.requests')}</SortHeader>
+            <th className="p-3 text-right">{t('usage.consumed_tokens')}</th>
             <SortHeader key="avgLatency" align="right">{t('usage.avg_latency')}</SortHeader>
             <SortHeader key="avgSpeed" align="right">{t('usage.avg_speed')}</SortHeader>
           </tr>
@@ -201,12 +216,18 @@ export function StatsTable({ data, groupBy, loading }: StatsTableProps) {
                       )}
                     </div>
                   </td>
+                  <td className="p-3 text-right">{item.requests.toLocaleString()}</td>
                   <td className="p-3 text-right font-mono">{formatTokens(item.inputTokens)}</td>
                   <td className="p-3 text-right">
-                    {formatCacheHit(item.cacheReadTokens, item.cacheCreationTokens)}
+                    {formatCacheHit(item.cacheReadTokens)}
+                  </td>
+                  <td className="p-3 text-right">
+                    <span className={(item.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                      {(item.reasoningTokens ?? 0) > 0 ? formatTokens(item.reasoningTokens!) : '-'}
+                    </span>
                   </td>
                   <td className="p-3 text-right font-mono">{formatTokens(item.outputTokens)}</td>
-                  <td className="p-3 text-right">{item.requests.toLocaleString()}</td>
+                  <td className="p-3 text-right font-mono">{formatTotalTokens(item.inputTokens, item.outputTokens)}</td>
                   <td className="p-3 text-right">
                     <span className={item.avgLatency && item.avgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>
                       {formatLatency(item.avgLatency)}
@@ -225,12 +246,18 @@ export function StatsTable({ data, groupBy, loading }: StatsTableProps) {
                     <td className="p-3 pl-8">
                       <span className="text-muted-foreground">{model.model}</span>
                     </td>
+                    <td className="p-3 text-right">{model.requests.toLocaleString()}</td>
                     <td className="p-3 text-right font-mono">{formatTokens(model.inputTokens)}</td>
                     <td className="p-3 text-right">
-                      {formatCacheHit(model.cacheReadTokens, model.cacheCreationTokens)}
+                      {formatCacheHit(model.cacheReadTokens)}
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className={(model.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                        {(model.reasoningTokens ?? 0) > 0 ? formatTokens(model.reasoningTokens!) : '-'}
+                      </span>
                     </td>
                     <td className="p-3 text-right font-mono">{formatTokens(model.outputTokens)}</td>
-                    <td className="p-3 text-right">{model.requests.toLocaleString()}</td>
+                    <td className="p-3 text-right font-mono">{formatTotalTokens(model.inputTokens, model.outputTokens)}</td>
                     <td className="p-3 text-right">
                       <span className={model.avgLatency && model.avgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>
                         {formatLatency(model.avgLatency)}

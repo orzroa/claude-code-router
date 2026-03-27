@@ -113,6 +113,7 @@ interface HourlyBreakdown {
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
+  reasoningTokens?: number;
   avgLatency?: number;
   avgSpeed?: number;
 }
@@ -137,6 +138,7 @@ interface UsageRecord {
   timeToFirstToken?: number;
   success: boolean;
   errorMessage?: string;
+  reasoningTokens?: number;
 }
 
 interface HourlyData {
@@ -148,6 +150,7 @@ interface HourlyData {
   cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
+  reasoningTokens?: number;
 }
 
 interface PerformanceData {
@@ -175,7 +178,6 @@ export function UsagePage() {
 
   // State
   const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
   const [provider, setProvider] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -224,7 +226,6 @@ export function UsagePage() {
 
         setDateHistory(history);
         setStartDate(today);
-        setEndDate(today);
       } catch (error) {
         console.error('Failed to fetch initial data:', error);
       }
@@ -235,15 +236,15 @@ export function UsagePage() {
 
   // Fetch usage data
   const fetchUsage = useCallback(async () => {
-    if (!startDate || !endDate) return;
+    if (!startDate) return;
 
     setIsLoading(true);
     try {
       const [summaryData, recordsData, hourlyResponse, performanceResponse] = await Promise.all([
-        api.getUsageSummary({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
-        api.getUsageRecords({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined, limit: pageSize, offset: (page - 1) * pageSize }),
-        api.getUsageHourly({ startDate, endDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
-        api.getUsagePerformance({ startDate, endDate, groupBy: 'hour', provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
+        api.getUsageSummary({ startDate, endDate: startDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
+        api.getUsageRecords({ startDate, endDate: startDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined, limit: pageSize, offset: (page - 1) * pageSize }),
+        api.getUsageHourly({ startDate, endDate: startDate, provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
+        api.getUsagePerformance({ startDate, endDate: startDate, groupBy: 'hour', provider: provider && provider !== 'all' ? provider : undefined, model: model && model !== 'all' ? model : undefined }),
       ]);
 
       setSummary(summaryData);
@@ -257,7 +258,7 @@ export function UsagePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate, provider, model, page, pageSize, t]);
+  }, [startDate, provider, model, page, pageSize, t]);
 
   useEffect(() => {
     fetchUsage();
@@ -269,7 +270,7 @@ export function UsagePage() {
       const content = await api.exportUsage({
         format,
         startDate,
-        endDate,
+        endDate: startDate,
         provider: provider && provider !== 'all' ? provider : undefined,
         model: model && model !== 'all' ? model : undefined,
       });
@@ -316,7 +317,8 @@ export function UsagePage() {
   // Date selection from sidebar
   const handleDateSelect = (date: string) => {
     setStartDate(date);
-    setEndDate(date);
+    setProvider('');
+    setModel('');
     setPage(1);
   };
 
@@ -333,29 +335,40 @@ export function UsagePage() {
       cacheReadTokens: m.cacheReadTokens,
       avgLatency: m.avgLatency,
       avgSpeed: m.avgSpeed,
+      reasoningTokens: m.reasoningTokens,
     }));
   }, [summary]);
 
   const totalTokens = (summary?.totalInputTokens || 0) + (summary?.totalOutputTokens || 0);
 
-  // Filter models based on selected provider
+  // Available providers for the selected date (from summary data)
+  const availableProviders = useMemo(() => {
+    if (summary?.byProvider) {
+      return summary.byProvider.map(p => p.provider);
+    }
+    return filters?.providers || [];
+  }, [summary, filters]);
+
+  // Filter models based on selected provider, using date-filtered summary data
   const filteredModels = useMemo(() => {
-    if (!filters?.models) return [];
     if (!provider || provider === 'all') {
-      // Deduplicate models when showing all providers
-      return Array.from(new Set(filters.models));
+      // When no provider selected, use all models from summary for this date
+      if (summary?.byModel) {
+        const models = summary.byModel.map(m => Array.isArray(m.model) ? m.model.join(', ') : m.model);
+        return Array.from(new Set(models));
+      }
+      return filters?.models || [];
     }
 
     // Get models for the selected provider from summary data
     const providerData = summary?.byProvider?.find(p => p.provider === provider);
     if (providerData?.models) {
       const models = providerData.models.map(m => Array.isArray(m.model) ? m.model.join(', ') : m.model);
-      // Deduplicate models for this provider
       return Array.from(new Set(models));
     }
 
-    // Deduplicate fallback models
-    return Array.from(new Set(filters.models));
+    // Fallback to filters
+    return filters?.models || [];
   }, [filters, provider, summary]);
 
   if (isLoading && !summary) {
@@ -371,7 +384,7 @@ export function UsagePage() {
       {/* Left Sidebar - Date History */}
       <DateSidebar
         dates={dateHistory}
-        selectedDate={startDate === endDate ? startDate : undefined}
+        selectedDate={startDate}
         onSelect={handleDateSelect}
         onSelectToday={() => {
           const todayDate = new Date();
@@ -414,24 +427,14 @@ export function UsagePage() {
             <CardContent>
               <div className="flex gap-4 flex-wrap">
                 <div className="space-y-2">
-                  <Label>{t('usage.start_date')}</Label>
+                  <Label>{t('usage.select_date')}</Label>
                   <Input
                     type="date"
                     value={startDate}
                     onChange={(e) => {
                       setStartDate(e.target.value);
-                      setPage(1);
-                    }}
-                    className="w-40"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('usage.end_date')}</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => {
-                      setEndDate(e.target.value);
+                      setProvider('');
+                      setModel('');
                       setPage(1);
                     }}
                     className="w-40"
@@ -445,7 +448,7 @@ export function UsagePage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">{t('usage.all_providers')}</SelectItem>
-                      {filters?.providers.map((p) => (
+                      {availableProviders.map((p) => (
                         <SelectItem key={p} value={p}>{p}</SelectItem>
                       ))}
                     </SelectContent>
@@ -569,7 +572,7 @@ export function UsagePage() {
                 <CardContent>
                   <PerformanceChart
                     data={performanceData}
-                    providers={filters?.providers || []}
+                    providers={availableProviders}
                     loading={isLoading}
                   />
                 </CardContent>
@@ -598,6 +601,7 @@ export function UsagePage() {
                         model: Array.isArray(daily.model) ? daily.model.join(', ') : daily.model,
                         avgLatency: hourly.avgLatency,
                         avgSpeed: hourly.avgSpeed,
+                        reasoningTokens: hourly.reasoningTokens,
                       }))
                     )}
                     loading={isLoading}
@@ -701,3 +705,8 @@ export function UsagePage() {
     </div>
   );
 }
+/* TEST_MARKER_12345 */
+/* UNIQUE_BUILD_TEST_MARKER_1774574234 */
+/* FINAL_TEST_MARKER_1774574262 */
+/* BUILD_TEST_1774574631 */
+// UNIQUE_MARKER_9e3f8a7b2c1d4e5f6a7b8c9d0e1f2a3b

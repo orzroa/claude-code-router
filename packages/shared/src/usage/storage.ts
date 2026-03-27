@@ -396,7 +396,13 @@ export function getModels(startDate?: string, endDate?: string): string[] {
     for (const record of readMonthlyFile(file)) {
       if (startDate && record.date < startDate) continue;
       if (endDate && record.date > endDate) continue;
-      models.add(record.model);
+      // Handle both string and array model formats
+      if (Array.isArray(record.model)) {
+        // If model is an array, add each item
+        record.model.forEach(m => models.add(m));
+      } else {
+        models.add(record.model);
+      }
     }
   }
 

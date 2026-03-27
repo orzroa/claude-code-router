@@ -451,12 +451,16 @@ class ApiClient {
   async getUsageHourly(params: {
     startDate: string;
     endDate: string;
+    provider?: string;
+    model?: string;
   }): Promise<{
     data: Array<{
       hour: number;
       requests: number;
       inputTokens: number;
       outputTokens: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
       avgLatency?: number;
       avgSpeed?: number;
     }>;
@@ -464,6 +468,8 @@ class ApiClient {
     const queryParams = new URLSearchParams();
     queryParams.append('startDate', params.startDate);
     queryParams.append('endDate', params.endDate);
+    if (params.provider) queryParams.append('provider', params.provider);
+    if (params.model) queryParams.append('model', params.model);
 
     return this.get(`/usage/hourly?${queryParams.toString()}`);
   }
@@ -473,6 +479,8 @@ class ApiClient {
     startDate: string;
     endDate: string;
     groupBy?: 'day' | 'hour';
+    provider?: string;
+    model?: string;
   }): Promise<{
     data: Array<{
       timestamp: string;
@@ -490,6 +498,8 @@ class ApiClient {
     queryParams.append('startDate', params.startDate);
     queryParams.append('endDate', params.endDate);
     if (params.groupBy) queryParams.append('groupBy', params.groupBy);
+    if (params.provider) queryParams.append('provider', params.provider);
+    if (params.model) queryParams.append('model', params.model);
 
     return this.get(`/usage/performance?${queryParams.toString()}`);
   }

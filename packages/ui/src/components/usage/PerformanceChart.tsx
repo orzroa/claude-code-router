@@ -38,34 +38,55 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
   const { t } = useTranslation();
   const [metric, setMetric] = useState<MetricType>('speed');
 
-  // Group data by provider and aggregate by date
+  // Group data by provider and aggregate by hour
   const chartData = useMemo(() => {
-    const dateMap = new Map<string, { [provider: string]: number }>();
+    // Map: hour -> Map(provider -> { value, requests })
+    const hourMap = new Map<string, Map<string, { value: number; requests: number }>>();
 
     for (const item of data) {
-      const date = item.date;
-      if (!dateMap.has(date)) {
-        dateMap.set(date, {});
+      // Extract hour from timestamp (format: "2026-03-26T14:00:00")
+      const hour = item.timestamp.split('T')[1]?.substring(0, 5) || '00:00';
+      if (!hourMap.has(hour)) {
+        hourMap.set(hour, new Map());
       }
 
-      const providerData = dateMap.get(date)!;
-      const existingValue = providerData[item.provider] || 0;
+      const providerMap = hourMap.get(hour)!;
       const value = metric === 'speed' ? (item.avgSpeed || 0) : (item.avgLatency || 0);
 
-      // Weighted average by requests
-      const existingWeight = Object.keys(providerData).length;
-      const totalWeight = existingWeight + item.requests;
-      providerData[item.provider] = existingWeight === 0
-        ? value
-        : (existingValue * existingWeight + value * item.requests) / totalWeight;
+      if (providerMap.has(item.provider)) {
+        const existing = providerMap.get(item.provider)!;
+        // Weighted average by request count
+        const totalRequests = existing.requests + item.requests;
+        existing.value = (existing.value * existing.requests + value * item.requests) / totalRequests;
+        existing.requests = totalRequests;
+      } else {
+        providerMap.set(item.provider, { value, requests: item.requests });
+      }
     }
 
-    return Array.from(dateMap.entries())
-      .map(([date, values]) => ({
-        date,
-        ...values,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    // Get all providers that have data in any hour
+    const allProvidersWithData = new Set<string>();
+    for (const item of data) {
+      if ((metric === 'speed' && item.avgSpeed) || (metric === 'latency' && item.avgLatency)) {
+        allProvidersWithData.add(item.provider);
+      }
+    }
+
+    return Array.from(hourMap.entries())
+      .map(([hour, providerMap]) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const entry: any = { hour };
+        // Ensure all providers have an entry, set null for missing data
+        for (const provider of allProvidersWithData) {
+          if (providerMap.has(provider)) {
+            entry[provider] = providerMap.get(provider)!.value;
+          } else {
+            entry[provider] = null;
+          }
+        }
+        return entry;
+      })
+      .sort((a, b) => a.hour.localeCompare(b.hour));
   }, [data, metric]);
 
   // Get visible providers (those with data)
@@ -144,11 +165,7 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
           <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
-              dataKey="date"
-              tickFormatter={(date) => {
-                const d = new Date(date);
-                return `${d.getMonth() + 1}/${d.getDate()}`;
-              }}
+              dataKey="hour"
               stroke="#6b7280"
               fontSize={12}
             />
@@ -169,10 +186,6 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
                 `${formatValue(Number(value) || 0)} ${metric === 'speed' ? 'tokens/s' : ''}`,
                 name,
               ]}
-              labelFormatter={(label) => {
-                const d = new Date(label);
-                return d.toLocaleDateString();
-              }}
             />
             <Legend
               wrapperStyle={{ fontSize: 12 }}
@@ -186,7 +199,7 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
                 strokeWidth={2}
                 dot={{ r: 3 }}
                 activeDot={{ r: 5 }}
-                connectNulls
+                connectNulls={false}
               />
             ))}
           </LineChart>

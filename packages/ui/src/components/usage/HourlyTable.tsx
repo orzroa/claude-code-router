@@ -17,6 +17,7 @@ interface HourlyData {
   cacheReadTokens: number;
   avgLatency?: number;
   avgSpeed?: number;
+  reasoningTokens?: number;
 }
 
 interface DetailedHourlyData extends HourlyData {
@@ -65,7 +66,8 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
     inputTokens: acc.inputTokens + d.inputTokens,
     outputTokens: acc.outputTokens + d.outputTokens,
     cacheReadTokens: acc.cacheReadTokens + d.cacheReadTokens,
-  }), { requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+    reasoningTokens: acc.reasoningTokens + (d.reasoningTokens || 0),
+  }), { requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, reasoningTokens: 0 });
 
   // Aggregate HourStats (already aggregated per hour from hierarchicalData)
   const aggHourStatsMap = (statsArr: HourStats[]) => {
@@ -74,6 +76,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
       inputTokens: acc.inputTokens + d.inputTokens,
       outputTokens: acc.outputTokens + d.outputTokens,
       cacheReadTokens: acc.cacheReadTokens + d.cacheReadTokens,
+      reasoningTokens: acc.reasoningTokens + d.reasoningTokens,
       totalLatency: acc.totalLatency + d.totalLatency,
       totalSpeed: acc.totalSpeed + d.totalSpeed,
       latencyCount: acc.latencyCount + d.latencyCount,
@@ -83,6 +86,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
+      reasoningTokens: 0,
       totalLatency: 0,
       totalSpeed: 0,
       latencyCount: 0,
@@ -104,7 +108,8 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
     inputTokens: acc.inputTokens + d.inputTokens,
     outputTokens: acc.outputTokens + d.outputTokens,
     cacheReadTokens: acc.cacheReadTokens + d.cacheReadTokens,
-  }), { requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 });
+    reasoningTokens: acc.reasoningTokens + (d.reasoningTokens || 0),
+  }), { requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, reasoningTokens: 0 });
 
   // Build: provider -> model -> hour, with aggregated stats (all dates merged)
   // hour key -> aggregated stats
@@ -113,6 +118,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
     inputTokens: number;
     outputTokens: number;
     cacheReadTokens: number;
+    reasoningTokens: number;
     totalLatency: number;
     totalSpeed: number;
     latencyCount: number;
@@ -136,6 +142,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
           inputTokens: 0,
           outputTokens: 0,
           cacheReadTokens: 0,
+          reasoningTokens: 0,
           totalLatency: 0,
           totalSpeed: 0,
           latencyCount: 0,
@@ -147,6 +154,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
       stats.inputTokens += item.inputTokens;
       stats.outputTokens += item.outputTokens;
       stats.cacheReadTokens += item.cacheReadTokens;
+      stats.reasoningTokens += item.reasoningTokens || 0;
       if (item.avgLatency !== undefined && item.avgLatency > 0) {
         stats.totalLatency += item.avgLatency * item.requests;
         stats.latencyCount += item.requests;
@@ -179,12 +187,17 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
 
   // ========== RENDER FUNCTIONS ==========
 
-  const renderStatCells = (stats: { requests: number; inputTokens: number; cacheReadTokens: number; outputTokens: number; inputTokens2?: number; outputTokens2?: number }, isHourRow = false) => [
+  const renderStatCells = (stats: { requests: number; inputTokens: number; cacheReadTokens: number; outputTokens: number; reasoningTokens?: number }, isHourRow = false) => [
+    <td key="req" className="p-2 text-right">{stats.requests.toLocaleString()}</td>,
     <td key="input" className="p-2 text-right font-mono">{formatTokens(stats.inputTokens)}</td>,
     <td key="cache" className="p-2 text-right font-mono text-xs">{formatCacheHit(stats.cacheReadTokens)}</td>,
+    <td key="reasoning" className="p-2 text-right">
+      <span className={(stats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+        {(stats.reasoningTokens ?? 0) > 0 ? formatTokens(stats.reasoningTokens!) : '-'}
+      </span>
+    </td>,
     <td key="output" className="p-2 text-right font-mono">{formatTokens(stats.outputTokens)}</td>,
     <td key="total" className="p-2 text-right font-mono">{formatTotalTokens(stats.inputTokens, stats.outputTokens)}</td>,
-    <td key="req" className="p-2 text-right">{stats.requests.toLocaleString()}</td>,
     <td key="lat" className="p-2 text-right">-</td>,
     <td key="spd" className="p-2 text-right">-</td>,
   ];
@@ -194,11 +207,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
     filteredData.map(item => (
       <tr key={`hour-${item.hour}`} className={`border-b hover:bg-muted/30 ${getIntensity(item.requests)}`}>
         <td className="p-2 font-mono text-sm">{formatHour(item.hour)}</td>
+        <td className="p-2 text-right">{item.requests.toLocaleString()}</td>
         <td className="p-2 text-right font-mono">{formatTokens(item.inputTokens)}</td>
         <td className="p-2 text-right font-mono text-xs">{formatCacheHit(item.cacheReadTokens)}</td>
+        <td className="p-2 text-right">
+          <span className={(item.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+            {(item.reasoningTokens ?? 0) > 0 ? formatTokens(item.reasoningTokens!) : '-'}
+          </span>
+        </td>
         <td className="p-2 text-right font-mono">{formatTokens(item.outputTokens)}</td>
         <td className="p-2 text-right font-mono">{formatTotalTokens(item.inputTokens, item.outputTokens)}</td>
-        <td className="p-2 text-right">{item.requests.toLocaleString()}</td>
         <td className="p-2 text-right">
           <span className={item.avgLatency && item.avgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(item.avgLatency)}</span>
         </td>
@@ -240,11 +258,12 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="p-2 text-left">{firstColLabel}</th>
+              <th className="p-2 text-right">{t('usage.request_count')}</th>
               <th className="p-2 text-right">{t('usage.input_tokens')}</th>
               <th className="p-2 text-right">{t('usage.cache_hit')}</th>
+              <th className="p-2 text-right">{t('usage.reasoning')}</th>
               <th className="p-2 text-right">{t('usage.output_tokens')}</th>
               <th className="p-2 text-right">{t('usage.consumed_tokens')}</th>
-              <th className="p-2 text-right">{t('usage.requests')}</th>
               <th className="p-2 text-right">{t('usage.avg_latency')}</th>
               <th className="p-2 text-right">{t('usage.avg_speed')}</th>
             </tr>
@@ -272,6 +291,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                     inputTokens: 0,
                     outputTokens: 0,
                     cacheReadTokens: 0,
+                    reasoningTokens: 0,
                     totalLatency: 0,
                     totalSpeed: 0,
                     latencyCount: 0,
@@ -282,6 +302,7 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                   acc.inputTokens += stats.inputTokens;
                   acc.outputTokens += stats.outputTokens;
                   acc.cacheReadTokens += stats.cacheReadTokens;
+                  acc.reasoningTokens += stats.reasoningTokens;
                   acc.totalLatency += stats.totalLatency;
                   acc.totalSpeed += stats.totalSpeed;
                   acc.latencyCount += stats.latencyCount;
@@ -298,11 +319,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                       {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       <span className="font-medium">{provider}</span>
                     </td>
+                    <td className="p-2 text-right">{providerStats.requests.toLocaleString()}</td>
                     <td className="p-2 text-right font-mono">{formatTokens(providerStats.inputTokens)}</td>
                     <td className="p-2 text-right font-mono text-xs">{formatCacheHit(providerStats.cacheReadTokens)}</td>
+                    <td className="p-2 text-right">
+                      <span className={(providerStats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                        {(providerStats.reasoningTokens ?? 0) > 0 ? formatTokens(providerStats.reasoningTokens) : '-'}
+                      </span>
+                    </td>
                     <td className="p-2 text-right font-mono">{formatTokens(providerStats.outputTokens)}</td>
                     <td className="p-2 text-right font-mono">{formatTotalTokens(providerStats.inputTokens, providerStats.outputTokens)}</td>
-                    <td className="p-2 text-right">{providerStats.requests.toLocaleString()}</td>
                     <td className="p-2 text-right">
                       <span className={providerAvgLatency && providerAvgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(providerAvgLatency)}</span>
                     </td>
@@ -318,11 +344,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                       return (
                         <tr key={`${providerRowId}-h-${hour}`} className="border-b bg-muted/10">
                           <td className="p-2 text-muted-foreground text-xs pl-8">{formatHour(hour)}</td>
+                          <td className="p-2 text-right">{stats.requests.toLocaleString()}</td>
                           <td className="p-2 text-right font-mono">{formatTokens(stats.inputTokens)}</td>
                           <td className="p-2 text-right font-mono text-xs">{formatCacheHit(stats.cacheReadTokens)}</td>
+                          <td className="p-2 text-right">
+                            <span className={(stats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                              {(stats.reasoningTokens ?? 0) > 0 ? formatTokens(stats.reasoningTokens) : '-'}
+                            </span>
+                          </td>
                           <td className="p-2 text-right font-mono">{formatTokens(stats.outputTokens)}</td>
                           <td className="p-2 text-right font-mono">{formatTotalTokens(stats.inputTokens, stats.outputTokens)}</td>
-                          <td className="p-2 text-right">{stats.requests.toLocaleString()}</td>
                           <td className="p-2 text-right">
                             <span className={hourAvgLatency && hourAvgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(hourAvgLatency)}</span>
                           </td>
@@ -355,11 +386,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                       {providerExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       <span className="font-medium">{provider}</span>
                     </td>
+                    <td className="p-2 text-right">{providerStats.requests.toLocaleString()}</td>
                     <td className="p-2 text-right font-mono">{formatTokens(providerStats.inputTokens)}</td>
                     <td className="p-2 text-right font-mono text-xs">{formatCacheHit(providerStats.cacheReadTokens)}</td>
+                    <td className="p-2 text-right">
+                      <span className={(providerStats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                        {(providerStats.reasoningTokens ?? 0) > 0 ? formatTokens(providerStats.reasoningTokens) : '-'}
+                      </span>
+                    </td>
                     <td className="p-2 text-right font-mono">{formatTokens(providerStats.outputTokens)}</td>
                     <td className="p-2 text-right font-mono">{formatTotalTokens(providerStats.inputTokens, providerStats.outputTokens)}</td>
-                    <td className="p-2 text-right">{providerStats.requests.toLocaleString()}</td>
                     <td className="p-2 text-right">
                       <span className={providerAvgLatency && providerAvgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(providerAvgLatency)}</span>
                     </td>
@@ -384,11 +420,16 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
                             {modelExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             <span className="text-muted-foreground text-sm">{model}</span>
                           </td>
+                          <td className="p-2 text-right">{modelStats.requests.toLocaleString()}</td>
                           <td className="p-2 text-right font-mono">{formatTokens(modelStats.inputTokens)}</td>
                           <td className="p-2 text-right font-mono text-xs">{formatCacheHit(modelStats.cacheReadTokens)}</td>
+                          <td className="p-2 text-right">
+                            <span className={(modelStats.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                              {(modelStats.reasoningTokens ?? 0) > 0 ? formatTokens(modelStats.reasoningTokens) : '-'}
+                            </span>
+                          </td>
                           <td className="p-2 text-right font-mono">{formatTokens(modelStats.outputTokens)}</td>
                           <td className="p-2 text-right font-mono">{formatTotalTokens(modelStats.inputTokens, modelStats.outputTokens)}</td>
-                          <td className="p-2 text-right">{modelStats.requests.toLocaleString()}</td>
                           <td className="p-2 text-right">
                             <span className={modelAvgLatency && modelAvgLatency > 5000 ? 'text-red-500' : 'text-green-600'}>{formatLatency(modelAvgLatency)}</span>
                           </td>
@@ -429,11 +470,14 @@ export function HourlyTable({ data, detailedData, loading, pageFilter }: HourlyT
           <tfoot>
             <tr className="border-t-2 border-muted font-semibold bg-muted/30">
               <td className="p-2">{t('usage.total')}</td>
+              <td className="p-2 text-right">{totals.requests.toLocaleString()}</td>
               <td className="p-2 text-right font-mono">{formatTokens(totals.inputTokens)}</td>
               <td className="p-2 text-right font-mono text-xs">{formatCacheHit(totals.cacheReadTokens)}</td>
+              <td className="p-2 text-right">
+                {(totals.reasoningTokens ?? 0) > 0 ? <span className="text-red-500">{formatTokens(totals.reasoningTokens)}</span> : '-'}
+              </td>
               <td className="p-2 text-right font-mono">{formatTokens(totals.outputTokens)}</td>
               <td className="p-2 text-right font-mono">{formatTotalTokens(totals.inputTokens, totals.outputTokens)}</td>
-              <td className="p-2 text-right">{totals.requests.toLocaleString()}</td>
               <td className="p-2 text-right">-</td>
               <td className="p-2 text-right">-</td>
             </tr>

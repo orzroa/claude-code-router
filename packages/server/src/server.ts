@@ -574,14 +574,14 @@ export const createServer = async (config: any): Promise<any> => {
   // Get hourly aggregation for time-of-day analysis
   app.get("/api/usage/hourly", async (req: any, reply: any) => {
     try {
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, provider, model } = req.query;
 
       if (!startDate || !endDate) {
         reply.status(400).send({ error: "startDate and endDate are required" });
         return;
       }
 
-      const hourlyData = getHourlyAggregation(startDate, endDate);
+      const hourlyData = getHourlyAggregation(startDate, endDate, provider, model);
       return { data: hourlyData };
     } catch (error: any) {
       console.error("Failed to get hourly aggregation:", error);
@@ -592,14 +592,20 @@ export const createServer = async (config: any): Promise<any> => {
   // Get performance metrics time series for charting
   app.get("/api/usage/performance", async (req: any, reply: any) => {
     try {
-      const { startDate, endDate, groupBy } = req.query;
+      const { startDate, endDate, groupBy, provider, model } = req.query;
 
       if (!startDate || !endDate) {
         reply.status(400).send({ error: "startDate and endDate are required" });
         return;
       }
 
-      const metrics = getPerformanceMetrics(startDate, endDate, groupBy || 'day');
+      const metrics = getPerformanceMetrics(
+        startDate,
+        endDate,
+        groupBy || 'day',
+        provider,
+        model
+      );
       return { data: metrics };
     } catch (error: any) {
       console.error("Failed to get performance metrics:", error);

@@ -24,6 +24,7 @@ interface UsageRecord {
   timeToFirstToken?: number;
   success: boolean;
   errorMessage?: string;
+  reasoningTokens?: number;
 }
 
 interface RecordsTableProps {
@@ -52,11 +53,10 @@ export function RecordsTable({
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
   };
 
   const formatLatency = (ms?: number) => {
@@ -66,10 +66,25 @@ export function RecordsTable({
   };
 
   const formatSpeed = (record: UsageRecord) => {
-    if (!record.duration || record.duration === 0) return '-';
-    const tokensPerSec = (record.outputTokens || 0) / (record.duration / 1000);
+    // speed = outputTokens / outputDuration (where outputDuration = duration - timeToFirstToken)
+    const outputDuration = (record.duration || 0) - (record.timeToFirstToken || 0);
+    if (!record.duration || outputDuration <= 0) return '-';
+    const tokensPerSec = (record.outputTokens || 0) / (outputDuration / 1000);
     if (tokensPerSec >= 1000) return `${(tokensPerSec / 1000).toFixed(1)}K/s`;
     return `${Math.round(tokensPerSec)}/s`;
+  };
+
+  // cacheReadInputTokens comes from LLM API's usage.cache_read_input_tokens field
+  // (extracted by @musistudio/llms, stored in UsageRecord)
+  const formatCacheHit = (cacheRead?: number) => {
+    if (!cacheRead || cacheRead === 0) return '-';
+    return formatTokens(cacheRead);
+  };
+
+  // totalTokens = inputTokens + outputTokens (cacheReadInputTokens is tracked separately)
+  const formatTotalTokens = (input: number, output: number) => {
+    const total = input + output;
+    return formatTokens(total);
   };
 
   if (loading) {
@@ -90,11 +105,15 @@ export function RecordsTable({
               <th className="p-2 text-left">{t('usage.time')}</th>
               <th className="p-2 text-left">{t('usage.provider')}</th>
               <th className="p-2 text-left">{t('usage.model')}</th>
-              <th className="p-2 text-right">{t('usage.input')}</th>
-              <th className="p-2 text-right">{t('usage.output')}</th>
-              <th className="p-2 text-right">{t('usage.duration')}</th>
+              <th className="p-2 text-right">{t('usage.input_tokens')}</th>
+              <th className="p-2 text-right">{t('usage.cache_hit')}</th>
+              <th className="p-2 text-right">{t('usage.reasoning')}</th>
+              <th className="p-2 text-right">{t('usage.output_tokens')}</th>
+              <th className="p-2 text-right">{t('usage.consumed_tokens')}</th>
               <th className="p-2 text-right">{t('usage.ttft')}</th>
+              <th className="p-2 text-right">{t('usage.output_duration')}</th>
               <th className="p-2 text-right">{t('usage.speed')}</th>
+              <th className="p-2 text-right">{t('usage.reasoning')}</th>
               <th className="p-2 text-center">{t('usage.status')}</th>
             </tr>
           </thead>
@@ -114,15 +133,25 @@ export function RecordsTable({
                     {Array.isArray(record.model) ? record.model.join(', ') : record.model}
                   </td>
                   <td className="p-2 text-right font-mono">{formatTokens(record.inputTokens)}</td>
+                  <td className="p-2 text-right font-mono text-xs">{formatCacheHit(record.cacheReadInputTokens)}</td>
+                  <td className="p-2 text-right">
+                    <span className={(record.reasoningTokens ?? 0) > 0 ? 'text-red-500' : 'text-muted-foreground'}>
+                      {(record.reasoningTokens ?? 0) > 0 ? formatTokens(record.reasoningTokens!) : '-'}
+                    </span>
+                  </td>
                   <td className="p-2 text-right font-mono">{formatTokens(record.outputTokens)}</td>
-                  <td className="p-2 text-right">{formatLatency(record.duration)}</td>
+                  <td className="p-2 text-right font-mono">{formatTotalTokens(record.inputTokens, record.outputTokens)}</td>
                   <td className="p-2 text-right">
                     <span className={record.timeToFirstToken && record.timeToFirstToken > 1000 ? 'text-yellow-600' : ''}>
                       {formatLatency(record.timeToFirstToken)}
                     </span>
                   </td>
+                  <td className="p-2 text-right">{formatLatency((record.duration || 0) - (record.timeToFirstToken || 0))}</td>
                   <td className="p-2 text-right">
-                    <span className={record.duration && record.outputTokens / (record.duration / 1000) < 10 ? 'text-red-500' : 'text-green-600'}>
+                    <span className={(() => {
+                      const outputDuration = (record.duration || 0) - (record.timeToFirstToken || 0);
+                      return outputDuration > 0 && record.outputTokens / (outputDuration / 1000) < 10;
+                    })() ? 'text-red-500' : 'text-green-600'}>
                       {formatSpeed(record)}
                     </span>
                   </td>
@@ -138,7 +167,7 @@ export function RecordsTable({
                 {/* Expanded row with error message */}
                 {expandedRow === record.id && record.errorMessage && (
                   <tr className="bg-red-50 dark:bg-red-950/20">
-                    <td colSpan={9} className="p-3">
+                    <td colSpan={12} className="p-3">
                       <div className="text-xs text-red-600 dark:text-red-400">
                         <span className="font-semibold">{t('usage.error')}:</span>
                         <pre className="mt-1 whitespace-pre-wrap break-all">{record.errorMessage}</pre>
