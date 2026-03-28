@@ -16,7 +16,7 @@ interface DateSidebarProps {
 }
 
 export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: DateSidebarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // Always compute today's date in local time
   const today = new Date();
@@ -37,7 +37,7 @@ export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: Da
     if (dateStr === todayStr) return t('usage.today');
     if (dateStr === yesterdayStr) return t('usage.yesterday');
 
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(i18n.language || 'zh-CN', {
       month: 'long',
       day: 'numeric',
     });
@@ -45,7 +45,7 @@ export function DateSidebar({ dates, selectedDate, onSelect, onSelectToday }: Da
 
   const formatDayOfWeek = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('zh-CN', { weekday: 'short' });
+    return date.toLocaleDateString(i18n.language || 'zh-CN', { weekday: 'short' });
   };
 
   return (
