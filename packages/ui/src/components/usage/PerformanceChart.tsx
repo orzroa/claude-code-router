@@ -46,12 +46,18 @@ export function PerformanceChart({ data, providers, loading }: PerformanceChartP
     for (const item of data) {
       // Extract hour from timestamp (format: "2026-03-26T14:00:00")
       const hour = item.timestamp.split('T')[1]?.substring(0, 5) || '00:00';
+
+      // Skip if no data for current metric
+      const value = metric === 'speed' ? item.avgSpeed : item.avgLatency;
+      if (value === undefined || value === null) {
+        continue;
+      }
+
       if (!hourMap.has(hour)) {
         hourMap.set(hour, new Map());
       }
 
       const providerMap = hourMap.get(hour)!;
-      const value = metric === 'speed' ? (item.avgSpeed || 0) : (item.avgLatency || 0);
 
       if (providerMap.has(item.provider)) {
         const existing = providerMap.get(item.provider)!;
