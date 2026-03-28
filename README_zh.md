@@ -324,8 +324,13 @@ Claude Code Router 使用插件系统来启用/禁用可选功能。在 `config.
 
 | 插件 | 默认 | 说明 |
 |--------|---------|-------------|
-| `usage-tracking` | 启用 | 跟踪 Token 用量、延迟和性能指标 |
+| `usage-tracking` | 禁用 | 跟踪 Token 用量、延迟和性能指标 |
 | `token-speed` | 禁用 | 测量流式 Token 生成速度 |
+
+**插件依赖：**
+- `usage-tracking` 依赖于 `token-speed` 来获取性能指标（首 Token 耗时和生成耗时）
+- 当启用 `usage-tracking` 时，`token-speed` 会自动启用
+- 如果只启用 `token-speed` 而不启用 `usage-tracking`，则只会记录性能数据但不会保存到用量日志
 
 当 `usage-tracking` 禁用时：
 - 不收集任何用量数据

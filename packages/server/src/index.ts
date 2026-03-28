@@ -62,43 +62,87 @@ async function registerPluginsFromConfig(serverInstance: any, config: any): Prom
   // Get plugins configuration from config file
   const pluginsConfig: PluginConfig[] = config.plugins || config.Plugins || [];
 
-  // Check if usage-tracking is explicitly configured
-  const usageTrackingConfig = pluginsConfig.find(p => p.name === 'usage-tracking');
+  // Track which plugins are enabled
+  let usageTrackingEnabled = false;
+  let tokenSpeedEnabled = false;
+  let tokenSpeedOptions: any = {};
 
-  // Register usage-tracking plugin (enabled by default unless explicitly disabled)
-  if (!usageTrackingConfig || usageTrackingConfig.enabled !== false) {
-    pluginManager.registerPlugin(usageTrackingPlugin, {
-      enabled: true,
-      retentionDays: 90,
-      ...usageTrackingConfig?.options
-    });
-  }
-
-  // Register other plugins from config
+  // First pass: determine which plugins to enable
   for (const pluginConfig of pluginsConfig) {
     const { name, enabled = false, options = {} } = pluginConfig;
 
-    // Skip usage-tracking as it's already handled above
-    if (name === 'usage-tracking') continue;
-
     switch (name) {
+      case 'usage-tracking':
+        if (enabled) {
+          usageTrackingEnabled = true;
+        }
+        break;
+
       case 'token-speed':
-        pluginManager.registerPlugin(tokenSpeedPlugin, {
-          enabled,
-          outputHandlers: [
-            {
-              type: 'temp-file',
-              enabled: true
-            }
-          ],
-          ...options
-        });
+        if (enabled) {
+          tokenSpeedEnabled = true;
+          tokenSpeedOptions = options;
+        }
         break;
 
       default:
         console.warn(`Unknown plugin: ${name}`);
         break;
     }
+  }
+
+  // usage-tracking depends on token-speed for performance metrics
+  if (usageTrackingEnabled && !tokenSpeedEnabled) {
+    tokenSpeedEnabled = true;
+  }
+
+  // Second pass: register enabled plugins
+  for (const pluginConfig of pluginsConfig) {
+    const { name, enabled = false, options = {} } = pluginConfig;
+
+    switch (name) {
+      case 'usage-tracking':
+        if (enabled) {
+          pluginManager.registerPlugin(usageTrackingPlugin, {
+            enabled: true,
+            retentionDays: 90,
+            ...options
+          });
+        }
+        break;
+
+      case 'token-speed':
+        if (tokenSpeedEnabled) {
+          pluginManager.registerPlugin(tokenSpeedPlugin, {
+            enabled: true,
+            outputHandlers: [
+              {
+                type: 'temp-file',
+                enabled: true
+              }
+            ],
+            ...tokenSpeedOptions
+          });
+        }
+        break;
+
+      default:
+        console.warn(`Unknown plugin: ${name}`);
+        break;
+    }
+  }
+
+  // Third: register token-speed if auto-enabled (not in config)
+  if (tokenSpeedEnabled && !pluginsConfig.some(p => p.name === 'token-speed')) {
+    pluginManager.registerPlugin(tokenSpeedPlugin, {
+      enabled: true,
+      outputHandlers: [
+        {
+          type: 'temp-file',
+          enabled: true
+        }
+      ]
+    });
   }
 
   // Enable all registered plugins

@@ -352,8 +352,13 @@ Claude Code Router uses a plugin system to enable/disable optional features. Con
 
 | Plugin | Default | Description |
 |--------|---------|-------------|
-| `usage-tracking` | Enabled | Tracks token usage, latency, and performance metrics |
+| `usage-tracking` | Disabled | Tracks token usage, latency, and performance metrics |
 | `token-speed` | Disabled | Measures streaming token generation speed |
+
+**Plugin Dependencies:**
+- `usage-tracking` depends on `token-speed` for performance metrics (time-to-first-token and generation duration)
+- When `usage-tracking` is enabled, `token-speed` is automatically enabled
+- If only `token-speed` is enabled without `usage-tracking`, performance data will be recorded but not saved to usage logs
 
 When `usage-tracking` is disabled:
 - No usage data is collected

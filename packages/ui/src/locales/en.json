@@ -391,7 +391,7 @@
     "cache_creation": "Cache Creation",
     "reasoning": "Reasoning",
     "disabled_title": "Usage Tracking Disabled",
-    "disabled_description": "Enable the usage-tracking plugin to view detailed token usage statistics.",
+    "disabled_description": "Enable the usage-tracking plugin to view detailed token usage statistics. The token-speed plugin will be automatically enabled when usage-tracking is enabled (required for performance metrics).",
     "config_example": "Add to your config.json:",
     "restart_hint": "Restart the server after updating configuration"
   }

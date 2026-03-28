@@ -390,7 +390,7 @@
     "cache_creation": "缓存创建",
     "reasoning": "推理",
     "disabled_title": "用量统计已禁用",
-    "disabled_description": "启用 usage-tracking 插件以查看详细的 Token 用量统计。",
+    "disabled_description": "启用 usage-tracking 插件以查看详细的 Token 用量统计。启用时会自动启用 token-speed 插件（用于获取性能指标）。",
     "config_example": "添加到您的 config.json：",
     "restart_hint": "更新配置后请重启服务"
   }
