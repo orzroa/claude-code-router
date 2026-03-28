@@ -4,6 +4,7 @@ import { SSEParserTransform } from '../utils/sse';
 import { OutputHandlerConfig, OutputOptions, outputManager } from './output';
 import { ITokenizer, TokenizerConfig } from '../types/tokenizer';
 import { LRUCache } from 'lru-cache';
+import { isLLMApiPath } from '@CCR/shared';
 
 /**
  * Token statistics interface
@@ -193,11 +194,7 @@ export const tokenSpeedPlugin: CCRPlugin = {
       const url = new URL(`http://127.0.0.1${request.url}`);
       const pathname = url.pathname;
 
-      // Support multiple API path patterns
-      const isMessagesPath = pathname.endsWith('/v1/messages');
-      const isChatPath = pathname.endsWith('/chat/completions');
-
-      if (!isMessagesPath && !isChatPath) {
+      if (!isLLMApiPath(pathname)) {
         return;
       }
 

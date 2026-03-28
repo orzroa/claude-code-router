@@ -13,6 +13,7 @@ import {
   getDailyTotals,
   getHourlyAggregation,
   getPerformanceMetrics,
+  isLLMApiPath,
   type UsageRecord,
   type UsageQuery,
   type CleanupOptions,
@@ -53,10 +54,7 @@ export const usageTrackingPlugin: CCRPlugin = {
 
       // Support multiple API path patterns
       const pathname = req.pathname || '';
-      const isMessagesPath = pathname.endsWith('/v1/messages');
-      const isChatPath = pathname.endsWith('/chat/completions');
-
-      if (!isMessagesPath && !isChatPath) {
+      if (!isLLMApiPath(pathname)) {
         fastify.log?.debug(`Skipping usage tracking for unknown path: ${pathname}`);
         return payload;
       }
