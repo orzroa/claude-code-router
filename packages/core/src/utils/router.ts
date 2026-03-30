@@ -59,7 +59,7 @@ const detectRoleFromMessages = (
   const block1 = content[1];
   if (block1?.type !== 'text') return null;
 
-  const text = block1.text || '';
+  const text = (block1.text || '').substring(0, 100);
   const caseSensitive = rolesConfig.caseSensitive === true;
 
   // Sort by priority, check keywords
