@@ -96,7 +96,17 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
             longContext: typeof data.Router.longContext === 'string' ? data.Router.longContext : '',
             longContextThreshold: typeof data.Router.longContextThreshold === 'number' ? data.Router.longContextThreshold : 60000,
             webSearch: typeof data.Router.webSearch === 'string' ? data.Router.webSearch : '',
-            image: typeof data.Router.image === 'string' ? data.Router.image : ''
+            image: typeof data.Router.image === 'string' ? data.Router.image : '',
+            roles: data.Router.roles && typeof data.Router.roles === 'object' ? {
+              enabled: typeof data.Router.roles.enabled === 'boolean' ? data.Router.roles.enabled : true,
+              caseSensitive: typeof data.Router.roles.caseSensitive === 'boolean' ? data.Router.roles.caseSensitive : false,
+              definitions: Array.isArray(data.Router.roles.definitions) ? data.Router.roles.definitions.map(d => ({
+                name: typeof d.name === 'string' ? d.name : '',
+                keywords: Array.isArray(d.keywords) ? d.keywords.filter(k => typeof k === 'string') : [],
+                model: typeof d.model === 'string' ? d.model : '',
+                priority: typeof d.priority === 'number' ? d.priority : 0
+              })) : []
+            } : undefined
           } : {
             default: '',
             background: '',

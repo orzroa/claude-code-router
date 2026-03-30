@@ -11,6 +11,19 @@ export interface Provider {
   transformer?: ProviderTransformer;
 }
 
+export interface RoleDefinition {
+  name: string;
+  keywords: string[];
+  model: string;
+  priority?: number;
+}
+
+export interface RoleRoutingConfig {
+  enabled?: boolean;
+  caseSensitive?: boolean;
+  definitions: RoleDefinition[];
+}
+
 export interface RouterConfig {
     default: string;
     background: string;
@@ -19,6 +32,7 @@ export interface RouterConfig {
     longContextThreshold: number;
     webSearch: string;
     image: string;
+    roles?: RoleRoutingConfig;
     custom?: any;
 }
 
