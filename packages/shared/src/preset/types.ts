@@ -104,6 +104,21 @@ export interface ProviderConfig {
   [key: string]: any;
 }
 
+// Role definition for role-based routing
+export interface RoleDefinition {
+  name: string;                   // Role identifier (e.g., "developer")
+  keywords: string[];             // Keywords to detect in Block[1] (e.g., ["开发团队的一员", "developer"])
+  model: string;                  // Target model (provider,model format)
+  priority?: number;              // Higher = checked first (default: 0)
+}
+
+// Role-based routing configuration
+export interface RoleRoutingConfig {
+  enabled?: boolean;              // Default: true if roles defined
+  caseSensitive?: boolean;        // Keyword matching case (default: false)
+  definitions: RoleDefinition[];
+}
+
 // Router configuration
 export interface RouterConfig {
   default?: string;
@@ -113,7 +128,8 @@ export interface RouterConfig {
   longContextThreshold?: number;
   webSearch?: string;
   image?: string;
-  [key: string]: string | number | undefined;
+  roles?: RoleRoutingConfig;      // Role-based routing configuration
+  [key: string]: string | number | undefined | RoleRoutingConfig;
 }
 
 // Transformer configuration

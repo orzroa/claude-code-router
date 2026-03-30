@@ -7,6 +7,7 @@ import { CLAUDE_PROJECTS_DIR, HOME_DIR } from "@CCR/shared";
 import { LRUCache } from "lru-cache";
 import { ConfigService } from "../services/config";
 import { TokenizerService } from "../services/tokenizer";
+import { RoleRoutingConfig, RoleDefinition } from "@CCR/shared";
 
 // Types from @anthropic-ai/sdk
 interface Tool {
@@ -33,6 +34,57 @@ interface MessageCreateParamsBase {
 }
 
 const enc = get_encoding("cl100k_base");
+
+/**
+ * Detect role from Message[0].content[1] (second text block)
+ * This is where Claude Code puts role instructions for Agent Team workflow
+ */
+const detectRoleFromMessages = (
+  messages: MessageParam[],
+  rolesConfig: RoleRoutingConfig | undefined
+): RoleDefinition | null => {
+  if (!rolesConfig?.definitions?.length || rolesConfig.enabled === false) {
+    return null;
+  }
+
+  // Get first user message
+  const firstUserMsg = messages.find(m => m.role === 'user');
+  if (!firstUserMsg) return null;
+
+  // Extract Block[1] (second text block)
+  const content = firstUserMsg.content;
+  if (!Array.isArray(content) || content.length < 2) return null;
+
+  // Find the second text block
+  const block1 = content[1];
+  if (block1?.type !== 'text') return null;
+
+  const text = block1.text || '';
+  const caseSensitive = rolesConfig.caseSensitive === true;
+
+  // Sort by priority, check keywords
+  const sortedDefs = [...rolesConfig.definitions].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+  for (const def of sortedDefs) {
+    for (const keyword of def.keywords) {
+      if (keyword.startsWith('/') && keyword.endsWith('/')) {
+        // Regex pattern: /pattern/ or /pattern/flags
+        const pattern = keyword.slice(1, -1);
+        const regex = caseSensitive ? new RegExp(pattern) : new RegExp(pattern, 'i');
+        if (regex.test(text)) {
+          return def;
+        }
+      } else {
+        // Plain text match
+        const kw = caseSensitive ? keyword : keyword.toLowerCase();
+        if (text.includes(kw)) {
+          return def;
+        }
+      }
+    }
+  }
+  return null;
+};
 
 export const calculateTokenCount = (
   messages: MessageParam[],
@@ -196,6 +248,22 @@ const getUseModel = async (
     req.log.info(`Using think model for ${req.body.thinking}`);
     return { model: Router.think, scenarioType: 'think' };
   }
+
+  // Role detection from Message[0].content[1] (Agent Team workflow)
+  const rolesConfig = Router?.roles;
+  if (rolesConfig?.definitions?.length) {
+    const matchedRole = detectRoleFromMessages(req.body.messages, rolesConfig);
+    // Log Block[1] for debugging role matching
+    const firstUserMsg = req.body.messages?.find((m: any) => m.role === 'user');
+    const block1 = firstUserMsg?.content?.[1]?.text?.substring(0, 100) || '';
+    if (matchedRole) {
+      req.log.info(`[ROLE] Detected '${matchedRole.name}' | Block[1]: "${block1}..." | Routing: ${matchedRole.model}`);
+      return { model: matchedRole.model, scenarioType: 'role' };
+    } else {
+      req.log.debug(`[ROLE] No match | Block[1]: "${block1}..." | Available roles: ${rolesConfig.definitions.map((d: any) => d.name).join(', ')}`);
+    }
+  }
+
   return { model: Router?.default, scenarioType: 'default' };
 };
 
@@ -205,7 +273,7 @@ export interface RouterContext {
   event?: any;
 }
 
-export type RouterScenarioType = 'default' | 'background' | 'think' | 'longContext' | 'webSearch';
+export type RouterScenarioType = 'default' | 'background' | 'think' | 'longContext' | 'webSearch' | 'role';
 
 export interface RouterFallbackConfig {
   default?: string[];
@@ -213,6 +281,7 @@ export interface RouterFallbackConfig {
   think?: string[];
   longContext?: string[];
   webSearch?: string[];
+  role?: string[];
 }
 
 export const router = async (req: any, _res: any, context: RouterContext) => {
