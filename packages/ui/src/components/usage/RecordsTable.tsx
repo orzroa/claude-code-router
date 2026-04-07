@@ -1,32 +1,16 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import type { UsageRecord } from '@/types/usage';
+export type { UsageRecord };
 
 // Local format tokens function
 function formatTokens(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
-}
-
-export interface UsageRecord {
-  id: string;
-  requestId: string;
-  timestamp: string;
-  date: string;
-  provider: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationInputTokens?: number;
-  cacheReadInputTokens?: number;
-  duration?: number;
-  timeToFirstToken?: number;
-  success: boolean;
-  errorMessage?: string;
-  reasoningTokens?: number;
 }
 
 interface RecordsTableProps {
@@ -122,9 +106,8 @@ export function RecordsTable({
           </thead>
           <tbody>
             {records.map((record) => (
-              <>
+              <React.Fragment key={record.id}>
                 <tr
-                  key={record.id}
                   className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
                   onClick={() => {
                     onRowClick?.(record);
@@ -181,7 +164,7 @@ export function RecordsTable({
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             ))}
           </tbody>
         </table>

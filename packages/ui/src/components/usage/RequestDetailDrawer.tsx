@@ -7,23 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AccordionItem } from '@/components/ui/accordion'
 import { AlertCircle } from 'lucide-react'
 import { api } from '@/lib/api'
-
-interface UsageRecord {
-  id: string
-  requestId: string
-  timestamp: string
-  provider: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  cacheCreationInputTokens?: number
-  cacheReadInputTokens?: number
-  duration?: number
-  timeToFirstToken?: number
-  success: boolean
-  errorMessage?: string
-  reasoningTokens?: number
-}
+import type { UsageRecord } from '@/types/usage'
 
 interface RequestPayload {
   model: string
