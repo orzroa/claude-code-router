@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as readline from 'readline';
 import * as path from 'path';
+import os from 'os';
 
-const LOGS_DIR = path.join(process.env.HOME || '', '.claude-code-router', 'logs');
+const LOGS_DIR = path.join(os.homedir(), '.claude-code-router', 'logs');
 
 export interface LogSearchResult {
   requestId: string;
@@ -10,6 +11,11 @@ export interface LogSearchResult {
   timestamp?: string;
 }
 
+/**
+ * Search recent log files for a request body entry matching the given requestId.
+ * Searches up to 7 days of log files (ccr-*.log).
+ * Stops at first match. Does NOT load entire files into memory.
+ */
 export async function searchRequestBodyFromLogs(requestId: string): Promise<LogSearchResult | null> {
   const DAYS_BACK = 7;
   const now = new Date();
@@ -55,7 +61,7 @@ async function searchFileForRequestId(filePath: string, requestId: string): Prom
         if (entry.reqId === requestId && entry.type === 'request body' && entry.data) {
           rl.close();
           stream.destroy();
-          resolve({ requestId, data: entry.data, timestamp: entry.time });
+          resolve({ requestId, data: entry.data, timestamp: entry.time as string | undefined });
         }
       } catch {
         // Not a JSON line, skip
