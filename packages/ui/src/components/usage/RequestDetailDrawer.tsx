@@ -50,6 +50,16 @@ interface LogResponse {
   error?: string
 }
 
+// Escape HTML to prevent XSS when rendering user/assistant content
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProps) {
   const { t } = useTranslation()
   const [data, setData] = useState<LogResponse | null>(null)
@@ -57,14 +67,25 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
 
   useEffect(() => {
     if (!record) return
+    let ignored = false
     setLoading(true)
     setData(null)
 
     api.getUsageRequestLog(record.requestId)
-      .then(setData)
-      .catch(() => setData({ requestId: record.requestId, payload: null, error: 'Network error' }))
-      .finally(() => setLoading(false))
-  }, [record?.requestId])
+      .then((result) => {
+        if (!ignored) setData(result)
+      })
+      .catch(() => {
+        if (!ignored) setData({ requestId: record.requestId, payload: null, error: 'Network error' })
+      })
+      .finally(() => {
+        if (!ignored) setLoading(false)
+      })
+
+    return () => {
+      ignored = true
+    }
+  }, [record])
 
   const formatLatency = (ms?: number) => {
     if (!ms) return '-'
@@ -133,7 +154,7 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
                         </div>
                         <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">
                           {typeof msg.content === 'string'
-                            ? msg.content
+                            ? escapeHtml(msg.content)
                             : JSON.stringify(msg.content, null, 2)}
                         </pre>
                       </div>
@@ -142,7 +163,7 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
                       <div className="border rounded-md p-3">
                         <Badge variant="outline" className="text-xs mb-1">system</Badge>
                         <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">
-                          {payload.system}
+                          {escapeHtml(payload.system)}
                         </pre>
                       </div>
                     )}
