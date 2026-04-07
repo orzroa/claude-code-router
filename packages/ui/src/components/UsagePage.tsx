@@ -40,7 +40,7 @@ import { DateSidebar } from '@/components/usage/DateSidebar';
 import { StatsTable } from '@/components/usage/StatsTable';
 import { PerformanceChart } from '@/components/usage/PerformanceChart';
 import { HourlyTable } from '@/components/usage/HourlyTable';
-import { RecordsTable } from '@/components/usage/RecordsTable';
+import { RecordsTable, type UsageRecord } from '@/components/usage/RecordsTable';
 
 // Types
 interface UsageSummary {
@@ -122,23 +122,6 @@ interface UsageFilters {
   providers: string[];
   models: string[];
   dateRange: { startDate: string; endDate: string } | null;
-}
-
-interface UsageRecord {
-  id: string;
-  timestamp: string;
-  date: string;
-  provider: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationInputTokens?: number;
-  cacheReadInputTokens?: number;
-  duration?: number;
-  timeToFirstToken?: number;
-  success: boolean;
-  errorMessage?: string;
-  reasoningTokens?: number;
 }
 
 interface HourlyData {

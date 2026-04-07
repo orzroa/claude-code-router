@@ -11,9 +11,11 @@ function formatTokens(num: number): string {
   return num.toString();
 }
 
-interface UsageRecord {
+export interface UsageRecord {
   id: string;
+  requestId: string;
   timestamp: string;
+  date: string;
   provider: string;
   model: string;
   inputTokens: number;
@@ -35,6 +37,7 @@ interface RecordsTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   loading?: boolean;
+  onRowClick?: (record: UsageRecord) => void;
 }
 
 export function RecordsTable({
@@ -45,6 +48,7 @@ export function RecordsTable({
   onPageChange,
   onPageSizeChange,
   loading,
+  onRowClick,
 }: RecordsTableProps) {
   const { t } = useTranslation();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -122,7 +126,10 @@ export function RecordsTable({
                 <tr
                   key={record.id}
                   className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => setExpandedRow(expandedRow === record.id ? null : record.id)}
+                  onClick={(e) => {
+                    onRowClick?.(record);
+                    setExpandedRow(expandedRow === record.id ? null : record.id);
+                  }}
                 >
                   <td className="p-2 font-mono text-xs">{formatTime(record.timestamp)}</td>
                   <td className="p-2">
