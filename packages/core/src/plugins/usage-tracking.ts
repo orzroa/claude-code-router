@@ -454,4 +454,35 @@ async function registerUsageRoutes(
       reply.status(500).send({ error: error.message || 'Failed to cleanup usage' });
     }
   });
+
+  // GET /api/usage/logs - Get raw request body from logs by requestId
+  fastify.get('/api/usage/logs', async (req, reply) => {
+    try {
+      const { requestId } = req.query as any;
+
+      if (!requestId || typeof requestId !== 'string') {
+        reply.status(400).send({ error: 'requestId is required' });
+        return;
+      }
+
+      const { searchRequestBodyFromLogs } = await import('@CCR/shared');
+      const result = await searchRequestBodyFromLogs(requestId);
+
+      if (!result) {
+        return {
+          requestId,
+          payload: null,
+          reason: 'log entry not found or request body not logged',
+        };
+      }
+
+      return {
+        requestId,
+        payload: result.data,
+      };
+    } catch (error: any) {
+      fastify.log?.error({ err: error }, 'Failed to search request log');
+      reply.status(500).send({ error: 'failed to read log files' });
+    }
+  });
 }
