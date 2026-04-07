@@ -126,7 +126,7 @@ export function RecordsTable({
                 <tr
                   key={record.id}
                   className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={(e) => {
+                  onClick={() => {
                     onRowClick?.(record);
                     setExpandedRow(expandedRow === record.id ? null : record.id);
                   }}
