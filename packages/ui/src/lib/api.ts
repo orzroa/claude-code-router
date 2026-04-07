@@ -504,6 +504,16 @@ class ApiClient {
     return this.get(`/usage/performance?${queryParams.toString()}`);
   }
 
+  // Get raw request payload from logs by requestId
+  async getUsageRequestLog(requestId: string): Promise<{
+    requestId: string;
+    payload: Record<string, unknown> | null;
+    reason?: string;
+    error?: string;
+  }> {
+    return this.get(`/usage/logs?requestId=${encodeURIComponent(requestId)}`);
+  }
+
   // ========== Plugin API methods ==========
 
   // Get plugin status
