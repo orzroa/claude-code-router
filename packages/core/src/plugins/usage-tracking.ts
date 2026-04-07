@@ -14,6 +14,7 @@ import {
   getHourlyAggregation,
   getPerformanceMetrics,
   isLLMApiPath,
+  searchRequestBodyFromLogs,
   type UsageRecord,
   type UsageQuery,
   type CleanupOptions,
@@ -465,15 +466,15 @@ async function registerUsageRoutes(
         return;
       }
 
-      const { searchRequestBodyFromLogs } = await import('@CCR/shared');
       const result = await searchRequestBodyFromLogs(requestId);
 
       if (!result) {
-        return {
+        reply.status(404).send({
           requestId,
           payload: null,
           reason: 'log entry not found or request body not logged',
-        };
+        });
+        return;
       }
 
       return {
