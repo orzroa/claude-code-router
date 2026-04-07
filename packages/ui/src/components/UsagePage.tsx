@@ -41,6 +41,7 @@ import { StatsTable } from '@/components/usage/StatsTable';
 import { PerformanceChart } from '@/components/usage/PerformanceChart';
 import { HourlyTable } from '@/components/usage/HourlyTable';
 import { RecordsTable, type UsageRecord } from '@/components/usage/RecordsTable';
+import { RequestDetailDrawer } from '@/components/usage/RequestDetailDrawer';
 
 // Types
 interface UsageSummary {
@@ -187,6 +188,10 @@ export function UsagePage() {
 
   // Cleanup dialog state
   const [isCleanupDialogOpen, setIsCleanupDialogOpen] = useState(false);
+
+  // Request detail drawer state
+  const [selectedRequest, setSelectedRequest] = useState<UsageRecord | null>(null);
+
   const [cleanupRetentionDays, setCleanupRetentionDays] = useState(90);
   const [cleanupDryRun, setCleanupDryRun] = useState(true);
   const [cleanupResult, setCleanupResult] = useState<any>(null);
@@ -706,6 +711,7 @@ export function UsagePage() {
                     onPageChange={setPage}
                     onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
                     loading={isLoading}
+                    onRowClick={setSelectedRequest}
                   />
                 </CardContent>
               </Card>
@@ -781,6 +787,12 @@ export function UsagePage() {
           onClose={() => setToast(null)}
         />
       )}
+
+      {/* Request Detail Drawer */}
+      <RequestDetailDrawer
+        record={selectedRequest}
+        onClose={() => setSelectedRequest(null)}
+      />
     </div>
   );
 }
