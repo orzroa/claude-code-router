@@ -469,12 +469,11 @@ async function registerUsageRoutes(
       const result = await searchRequestBodyFromLogs(requestId);
 
       if (!result) {
-        reply.status(404).send({
+        return {
           requestId,
           payload: null,
           reason: 'log entry not found or request body not logged',
-        });
-        return;
+        };
       }
 
       return {

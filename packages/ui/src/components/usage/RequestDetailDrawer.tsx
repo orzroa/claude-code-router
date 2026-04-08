@@ -59,8 +59,8 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
       .then((result) => {
         if (!ignored) setData(result)
       })
-      .catch(() => {
-        if (!ignored) setData({ requestId: record.requestId, payload: null, error: 'Network error' })
+      .catch((err: Error) => {
+        if (!ignored) setData({ requestId: record.requestId, payload: null, error: err.message || 'Network error' })
       })
       .finally(() => {
         if (!ignored) setLoading(false)
@@ -127,7 +127,7 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
                 {loading ? (
                   <Skeleton className="h-16 w-full" />
                 ) : !payload ? (
-                  <p className="text-sm text-muted-foreground py-2">No payload found.</p>
+                  <p className="text-sm text-muted-foreground py-2">{data?.reason || 'No payload found.'}</p>
                 ) : (
                   <div className="space-y-3">
                     {payload.messages?.map((msg, i) => (
