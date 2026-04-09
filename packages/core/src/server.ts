@@ -25,6 +25,7 @@ import Fastify, {
   FastifyServerOptions,
 } from "fastify";
 import cors from "@fastify/cors";
+import { randomUUID } from "crypto";
 import { ConfigService, AppConfig } from "./services/config";
 import { errorHandler } from "./api/middleware";
 import { registerApiRoutes } from "./api/routes";
@@ -54,6 +55,7 @@ interface ServerOptions extends FastifyServerOptions {
 function createApp(options: FastifyServerOptions = {}): FastifyInstance {
   const fastify = Fastify({
     bodyLimit: 50 * 1024 * 1024,
+    genReqId: () => randomUUID(),
     ...options,
   });
 

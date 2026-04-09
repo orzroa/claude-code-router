@@ -5,14 +5,15 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AccordionItem } from '@/components/ui/accordion'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, ChevronDown, Download } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import type { UsageRecord } from '@/types/usage'
 
 interface RequestPayload {
   model: string
   messages: Array<{ role: string; content: string | Array<unknown> }>
-  system?: string
+  system?: string | Array<unknown>
   max_tokens?: number
   temperature?: number
   top_p?: number
@@ -80,6 +81,10 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
   const payload = data?.payload as RequestPayload | null
   const roleList = payload?.messages?.map((m) => m.role).join(' → ') || ''
 
+  // Message selection state
+  const [selectedMessageIndex, setSelectedMessageIndex] = useState<number | null>(null)
+  const selectedMessage = selectedMessageIndex !== null ? payload?.messages?.[selectedMessageIndex] : null
+
   // Extract params (exclude known structural fields)
   const PARAM_KEYS = new Set(['model', 'messages', 'system', 'stream', 'tools', 'tool_choice'])
   const requestParams = payload
@@ -88,7 +93,7 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
 
   return (
     <Sheet open={!!record} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="flex flex-col p-0 w-[600px] max-w-full">
+      <SheetContent className="flex flex-col p-0 w-[800px] max-w-full">
         <SheetHeader className="px-6 py-4 border-b shrink-0">
           <SheetTitle className="text-base">Request Detail</SheetTitle>
           <p className="text-xs text-muted-foreground font-mono break-all">{record?.requestId}</p>
@@ -119,50 +124,97 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
 
             {/* Messages */}
             <section>
-              <AccordionItem
-                value="messages"
-                trigger={<span>Messages ({payload?.messages?.length ?? 0}) — {roleList || '-'}</span>}
-                defaultOpen
-              >
-                {loading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : !payload ? (
-                  <p className="text-sm text-muted-foreground py-2">{data?.reason || 'No payload found.'}</p>
-                ) : (
-                  <div className="space-y-3">
-                    {payload.messages?.map((msg, i) => (
-                      <div key={i} className="border rounded-md p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <Badge variant="secondary" className="text-xs">{msg.role}</Badge>
-                          <span className="text-xs text-muted-foreground">#{i + 1}</span>
+              <h3 className="text-sm font-semibold mb-2">Messages ({payload?.messages?.length ?? 0})</h3>
+              {loading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : !payload ? (
+                <p className="text-sm text-muted-foreground py-2">{data?.reason || 'No payload found.'}</p>
+              ) : (
+                <div className="space-y-1">
+                  {/* Messages in reverse order (newest first, highest number at top) */}
+                  {payload.messages?.map((msg, i) => {
+                    const actualIndex = payload.messages!.length - i - 1
+                    const actualMsg = payload.messages![actualIndex]
+                    // Numbering: oldest message is #1, newest is #N
+                    const displayIndex = payload.messages!.length - i
+                    return (
+                      <div key={actualIndex}>
+                        <button
+                          onClick={() => setSelectedMessageIndex(selectedMessageIndex === actualIndex ? null : actualIndex)}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-muted transition-colors text-left border',
+                            selectedMessageIndex === actualIndex && 'bg-muted border-primary'
+                          )}
+                        >
+                          <Badge variant="secondary" className="text-xs shrink-0">{actualMsg.role}</Badge>
+                          <span className="text-xs text-muted-foreground shrink-0">#{displayIndex}</span>
+                          <ChevronDown className={cn(
+                            'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                            selectedMessageIndex === actualIndex && 'rotate-180'
+                          )} />
+                          <span className="truncate text-xs">
+                            {typeof actualMsg.content === 'string'
+                              ? actualMsg.content.slice(0, 80) + (actualMsg.content.length > 80 ? '...' : '')
+                              : `[${actualMsg.content?.length ?? 0} items]`}
+                          </span>
+                        </button>
+                        {selectedMessageIndex === actualIndex && (
+                          <div className="border border-t-0 rounded-b-md p-3 bg-muted/30">
+                            <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-[600px] overflow-y-auto">
+                              {typeof actualMsg.content === 'string'
+                                ? actualMsg.content
+                                : JSON.stringify(actualMsg.content, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {/* System message at the end */}
+                  {payload.system && (
+                    <div>
+                      <button
+                        onClick={() => setSelectedMessageIndex(selectedMessageIndex === -1 ? null : -1)}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-muted transition-colors text-left border',
+                          selectedMessageIndex === -1 && 'bg-muted border-primary'
+                        )}
+                      >
+                        <Badge variant="outline" className="text-xs shrink-0">system</Badge>
+                        <ChevronDown className={cn(
+                          'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                          selectedMessageIndex === -1 && 'rotate-180'
+                        )} />
+                        <span className="truncate text-xs">
+                          {typeof payload.system === 'string'
+                            ? payload.system.slice(0, 80) + (payload.system.length > 80 ? '...' : '')
+                            : `[${payload.system?.length ?? 0} items]`}
+                        </span>
+                      </button>
+                      {selectedMessageIndex === -1 && (
+                        <div className="border border-t-0 rounded-b-md p-3 bg-muted/30">
+                          <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-[600px] overflow-y-auto">
+                            {typeof payload.system === 'string'
+                              ? payload.system
+                              : JSON.stringify(payload.system, null, 2)}
+                          </pre>
                         </div>
-                        <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">
-                          {typeof msg.content === 'string'
-                            ? escapeHtml(msg.content)
-                            : JSON.stringify(msg.content, null, 2)}
-                        </pre>
-                      </div>
-                    ))}
-                    {payload.system && (
-                      <div className="border rounded-md p-3">
-                        <Badge variant="outline" className="text-xs mb-1">system</Badge>
-                        <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">
-                          {escapeHtml(payload.system)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </AccordionItem>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Request Parameters */}
               {requestParams.length > 0 && (
-                <AccordionItem value="params" trigger={<span>Request Parameters</span>}>
+                <AccordionItem value="params" trigger={<span>Request Parameters</span>} className="mt-4">
                   <div className="space-y-1 text-sm">
                     {requestParams.map(([k, v]) => (
                       <div key={k} className="flex gap-2">
                         <span className="text-muted-foreground font-mono text-xs shrink-0">{k}:</span>
-                        <span className="font-mono text-xs break-all">{String(v)}</span>
+                        <span className="font-mono text-xs break-all">
+                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -171,11 +223,38 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
 
               {/* Raw JSON */}
               {payload && (
-                <AccordionItem value="raw" trigger={<span>Raw JSON</span>}>
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold cursor-pointer" onClick={(e) => {
+                      const item = e.currentTarget.parentElement?.nextElementSibling
+                      if (item) {
+                        item.classList.toggle('hidden')
+                      }
+                    }}>Raw JSON</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `request-${record?.requestId || 'detail'}.json`
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        URL.revokeObjectURL(url)
+                      }}
+                      className="px-2 py-1 rounded text-xs hover:bg-muted-foreground/10 transition-colors flex items-center gap-1"
+                      title="Download JSON"
+                    >
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                      <span>Download</span>
+                    </button>
+                  </div>
                   <pre className="text-xs bg-muted rounded-md p-3 overflow-x-auto max-h-96">
                     {JSON.stringify(payload, null, 2)}
                   </pre>
-                </AccordionItem>
+                </div>
               )}
             </section>
 

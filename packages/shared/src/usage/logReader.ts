@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as readline from 'readline';
 import * as path from 'path';
 import os from 'os';
 
@@ -13,62 +12,88 @@ export interface LogSearchResult {
 
 /**
  * Search recent log files for a request body entry matching the given requestId.
- * Searches up to 7 days of log files (ccr-*.log).
- * Stops at first match. Does NOT load entire files into memory.
+ * Searches up to 7 days of log files (ccr-*.log) by modification time.
+ * Stops at first match. Uses a custom newline splitter to handle entries
+ * that may span multiple lines (e.g. message content with embedded newlines).
  */
 export async function searchRequestBodyFromLogs(requestId: string): Promise<LogSearchResult | null> {
-  const DAYS_BACK = 7;
-  const now = new Date();
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-  for (let i = 0; i < DAYS_BACK; i++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    const logFiles = getLogFilesForDate(date);
-    for (const file of logFiles) {
-      const result = await searchFileForRequestId(file, requestId);
-      if (result) return result;
-    }
+  if (!fs.existsSync(LOGS_DIR)) return null;
+
+  let logFiles: string[] = [];
+  try {
+    logFiles = fs.readdirSync(LOGS_DIR)
+      .filter(f => f.startsWith('ccr-') && f.endsWith('.log'))
+      .map(f => ({ name: f, mtime: fs.statSync(path.join(LOGS_DIR, f)).mtimeMs }))
+      .filter(f => f.mtime >= cutoff)
+      .sort((a, b) => b.mtime - a.mtime)
+      .map(f => path.join(LOGS_DIR, f.name));
+  } catch {
+    return null;
+  }
+
+  for (const file of logFiles) {
+    const result = await searchFileForRequestId(file, requestId);
+    if (result) return result;
   }
 
   return null;
 }
 
-function getLogFilesForDate(date: Date): string[] {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const logsDir = LOGS_DIR;
-
-  if (!fs.existsSync(logsDir)) return [];
-
-  try {
-    return fs.readdirSync(logsDir)
-      .filter(f => f.startsWith(`ccr-${year}${month}${day}`))
-      .map(f => path.join(logsDir, f));
-  } catch {
-    return [];
-  }
-}
-
 async function searchFileForRequestId(filePath: string, requestId: string): Promise<LogSearchResult | null> {
   return new Promise((resolve) => {
-    const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    const stream = fs.createReadStream(filePath, {
+      encoding: 'utf-8',
+      highWaterMark: 1024 * 1024, // 1MB chunks
+    });
 
-    rl.on('line', (line: string) => {
-      try {
-        const entry = JSON.parse(line);
-        if (entry.reqId === requestId && entry.type === 'request body' && entry.data) {
-          rl.close();
-          stream.destroy();
-          resolve({ requestId, data: entry.data, timestamp: entry.time as string | undefined });
+    let leftover = ''; // partial line from previous chunk
+    let closed = false;
+
+    stream.on('data', (chunk) => {
+      if (closed) return;
+
+      // Prepend any leftover from previous chunk
+      const data = leftover + chunk;
+      const lines = data.split('\n');
+
+      // Last element may be incomplete — save for next chunk
+      leftover = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.reqId === requestId && entry.type === 'request body' && entry.data) {
+            stream.destroy();
+            closed = true;
+            resolve({ requestId, data: entry.data, timestamp: entry.time as string | undefined });
+            return;
+          }
+        } catch {
+          // Skip malformed lines
         }
-      } catch {
-        // Not a JSON line, skip
       }
     });
 
-    rl.on('close', () => resolve(null));
+    stream.on('close', () => {
+      if (closed) return;
+      // Process any remaining data
+      if (leftover.trim()) {
+        try {
+          const entry = JSON.parse(leftover);
+          if (entry.reqId === requestId && entry.type === 'request body' && entry.data) {
+            resolve({ requestId, data: entry.data, timestamp: entry.time as string | undefined });
+            return;
+          }
+        } catch {
+          // Skip
+        }
+      }
+      resolve(null);
+    });
+
     stream.on('error', () => resolve(null));
   });
 }
