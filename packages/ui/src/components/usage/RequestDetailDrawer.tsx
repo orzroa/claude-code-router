@@ -95,8 +95,33 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
     <Sheet open={!!record} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="flex flex-col p-0 w-[800px] max-w-full">
         <SheetHeader className="px-6 py-4 border-b shrink-0">
-          <SheetTitle className="text-base">Request Detail</SheetTitle>
-          <p className="text-xs text-muted-foreground font-mono break-all">{record?.requestId}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <SheetTitle className="text-base">Request Detail</SheetTitle>
+              <p className="text-xs text-muted-foreground font-mono break-all">{record?.requestId}</p>
+            </div>
+            {payload && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `request-${record?.requestId || 'detail'}.json`
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                  URL.revokeObjectURL(url)
+                }}
+                className="px-2 py-1 rounded text-xs hover:bg-muted-foreground/10 transition-colors flex items-center gap-1"
+                title="Download JSON"
+              >
+                <Download className="h-4 w-4 text-muted-foreground" />
+                <span>Download</span>
+              </button>
+            )}
+          </div>
         </SheetHeader>
 
         <ScrollArea className="flex-1">
@@ -223,38 +248,11 @@ export function RequestDetailDrawer({ record, onClose }: RequestDetailDrawerProp
 
               {/* Raw JSON */}
               {payload && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold cursor-pointer" onClick={(e) => {
-                      const item = e.currentTarget.parentElement?.nextElementSibling
-                      if (item) {
-                        item.classList.toggle('hidden')
-                      }
-                    }}>Raw JSON</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = `request-${record?.requestId || 'detail'}.json`
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                        URL.revokeObjectURL(url)
-                      }}
-                      className="px-2 py-1 rounded text-xs hover:bg-muted-foreground/10 transition-colors flex items-center gap-1"
-                      title="Download JSON"
-                    >
-                      <Download className="h-4 w-4 text-muted-foreground" />
-                      <span>Download</span>
-                    </button>
-                  </div>
+                <AccordionItem value="raw-json" trigger={<span>Raw JSON</span>} className="mt-4">
                   <pre className="text-xs bg-muted rounded-md p-3 overflow-x-auto max-h-96">
                     {JSON.stringify(payload, null, 2)}
                   </pre>
-                </div>
+                </AccordionItem>
               )}
             </section>
 
